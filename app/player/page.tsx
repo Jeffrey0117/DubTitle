@@ -11,14 +11,16 @@ export default function PlayerPage() {
   const [timingConfig, setTimingConfig] = useState<TimingConfig>(DEFAULT_TIMING);
   const [subtitles, setSubtitles] = useState<Array<{ start: number; end: number; text: string }>>([]);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const youtubePlayerRef = useRef<any>(null);
 
   // Initialize BroadcastChannel on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
         broadcastChannelRef.current = new BroadcastChannel('dubtitle-video');
+        console.log('[播放器页] ✅ BroadcastChannel 已连接');
       } catch (error) {
-        console.log('BroadcastChannel not supported, using localStorage only');
+        console.log('[播放器页] ⚠️ BroadcastChannel 不支持，仅使用 localStorage');
       }
     }
   }, []);
@@ -64,6 +66,91 @@ export default function PlayerPage() {
         // This message is received but no action needed on player page currently
         // Can be extended in the future for dynamic styling
         console.debug('TEXT_STYLE_CHANGED received on player:', data);
+      }
+
+      // Handle PLAYER_CONTROL messages from subtitle page
+      if (type === 'PLAYER_CONTROL' && youtubePlayerRef.current) {
+        const player = youtubePlayerRef.current;
+        const { action, value } = data || {};
+
+        console.log('[播放器控制] 收到命令:', action, value);
+
+        try {
+          switch (action) {
+            case 'PLAY':
+              if (typeof player.playVideo === 'function') {
+                player.playVideo();
+              }
+              break;
+            case 'PAUSE':
+              if (typeof player.pauseVideo === 'function') {
+                player.pauseVideo();
+              }
+              break;
+            case 'TOGGLE_PLAY':
+              if (typeof player.getPlayerState === 'function') {
+                const state = player.getPlayerState();
+                // 1 = playing, 2 = paused
+                if (state === 1) {
+                  player.pauseVideo();
+                } else {
+                  player.playVideo();
+                }
+              }
+              break;
+            case 'SEEK':
+              if (typeof player.seekTo === 'function' && typeof value === 'number') {
+                const currentTime = player.getCurrentTime();
+                player.seekTo(currentTime + value, true);
+              }
+              break;
+            case 'SEEK_TO':
+              if (typeof player.seekTo === 'function' && typeof value === 'number') {
+                player.seekTo(value, true);
+              }
+              break;
+            case 'VOLUME_UP':
+              if (typeof player.getVolume === 'function' && typeof player.setVolume === 'function') {
+                const currentVolume = player.getVolume();
+                player.setVolume(Math.min(100, currentVolume + 10));
+              }
+              break;
+            case 'VOLUME_DOWN':
+              if (typeof player.getVolume === 'function' && typeof player.setVolume === 'function') {
+                const currentVolume = player.getVolume();
+                player.setVolume(Math.max(0, currentVolume - 10));
+              }
+              break;
+            case 'MUTE':
+              if (typeof player.mute === 'function') {
+                player.mute();
+              }
+              break;
+            case 'UNMUTE':
+              if (typeof player.unMute === 'function') {
+                player.unMute();
+              }
+              break;
+            case 'TOGGLE_MUTE':
+              if (typeof player.isMuted === 'function') {
+                if (player.isMuted()) {
+                  player.unMute();
+                } else {
+                  player.mute();
+                }
+              }
+              break;
+            case 'PLAYBACK_RATE':
+              if (typeof player.setPlaybackRate === 'function' && typeof value === 'number') {
+                player.setPlaybackRate(value);
+              }
+              break;
+            default:
+              console.warn('Unknown player control action:', action);
+          }
+        } catch (error) {
+          console.error('Error executing player control:', error);
+        }
       }
     };
 
@@ -148,6 +235,11 @@ export default function PlayerPage() {
     }
   };
 
+  const handlePlayerReady = (player: any) => {
+    youtubePlayerRef.current = player;
+    console.log('YouTube player instance saved for remote control');
+  };
+
   return (
     <div className="w-full min-h-screen flex flex-col bg-neutral-950">
       {/* Header with Title */}
@@ -169,6 +261,7 @@ export default function PlayerPage() {
             videoId={videoId}
             onUrlSubmit={handleUrlSubmit}
             onTimeUpdate={handleTimeUpdate}
+            onPlayerReady={handlePlayerReady}
           />
 
           {/* Timing Calibration Component */}

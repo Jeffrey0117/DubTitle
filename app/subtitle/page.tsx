@@ -65,6 +65,7 @@ export default function SubtitlePage() {
     try {
       const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
       broadcastChannelRef.current = channel;
+      console.log('[字幕页] ✅ BroadcastChannel 已连接');
 
       const handleMessage = (event: MessageEvent) => {
         const { type, data } = event.data;
@@ -196,6 +197,130 @@ export default function SubtitlePage() {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Keyboard controls for player (like YouTube)
+  useEffect(() => {
+    const sendPlayerControl = (action: string, value?: number) => {
+      console.log('[键盘控制] 发送命令:', action, value);
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.postMessage({
+          type: 'PLAYER_CONTROL',
+          data: { action, value }
+        });
+        console.log('[键盘控制] ✅ 命令已发送');
+      } else {
+        console.warn('[键盘控制] ⚠️ BroadcastChannel 未连接');
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore keyboard shortcuts if user is typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Prevent default behavior for handled keys
+      const handledKeys = [' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'f', 'F', 'm', 'M', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'j', 'J', 'k', 'K', 'l', 'L', '<', '>', ',', '.'];
+
+      if (handledKeys.includes(e.key)) {
+        e.preventDefault();
+        console.log('[键盘控制] 按键:', e.key);
+      }
+
+      switch (e.key) {
+        case ' ':
+          // Spacebar - Play/Pause
+          sendPlayerControl('TOGGLE_PLAY');
+          break;
+        case 'k':
+        case 'K':
+          // K - Play/Pause (YouTube-style)
+          sendPlayerControl('TOGGLE_PLAY');
+          break;
+        case 'ArrowLeft':
+          // Left arrow - Rewind 5 seconds
+          sendPlayerControl('SEEK', -5);
+          break;
+        case 'j':
+        case 'J':
+          // J - Rewind 10 seconds (YouTube-style)
+          sendPlayerControl('SEEK', -10);
+          break;
+        case 'ArrowRight':
+          // Right arrow - Forward 5 seconds
+          sendPlayerControl('SEEK', 5);
+          break;
+        case 'l':
+        case 'L':
+          // L - Forward 10 seconds (YouTube-style)
+          sendPlayerControl('SEEK', 10);
+          break;
+        case 'ArrowUp':
+          // Up arrow - Volume up
+          sendPlayerControl('VOLUME_UP');
+          break;
+        case 'ArrowDown':
+          // Down arrow - Volume down
+          sendPlayerControl('VOLUME_DOWN');
+          break;
+        case 'm':
+        case 'M':
+          // M - Toggle mute
+          sendPlayerControl('TOGGLE_MUTE');
+          break;
+        case 'f':
+        case 'F':
+          // F - Toggle fullscreen
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+              console.log('Fullscreen request failed:', err);
+            });
+          } else {
+            document.exitFullscreen();
+          }
+          break;
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+          // Number keys - Jump to 0%-90% of video
+          if (subtitles.length > 0) {
+            const lastSubtitle = subtitles[subtitles.length - 1];
+            const videoDuration = lastSubtitle.end;
+            const percentage = parseInt(e.key) / 10;
+            const seekTime = videoDuration * percentage;
+            sendPlayerControl('SEEK_TO', seekTime);
+          }
+          break;
+        case '<':
+        case ',':
+          // < or , - Decrease playback speed
+          sendPlayerControl('PLAYBACK_RATE', 0.75);
+          break;
+        case '>':
+        case '.':
+          // > or . - Increase playback speed
+          sendPlayerControl('PLAYBACK_RATE', 1.25);
+          break;
+        default:
+          break;
+      }
+    };
+
+    console.log('[键盘控制] ✅ 键盘监听器已注册');
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      console.log('[键盘控制] 🔴 键盘监听器已移除');
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [subtitles]);
 
   // Fetch subtitles for the given video ID
   const fetchSubtitles = async (id: string) => {

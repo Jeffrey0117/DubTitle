@@ -13,9 +13,10 @@ interface YouTubePlayerProps {
   videoId: string;
   onUrlSubmit: (url: string) => void;
   onTimeUpdate: (time: number) => void;
+  onPlayerReady?: (player: any) => void;
 }
 
-export default function YouTubePlayer({ videoId, onUrlSubmit, onTimeUpdate }: YouTubePlayerProps) {
+export default function YouTubePlayer({ videoId, onUrlSubmit, onTimeUpdate, onPlayerReady }: YouTubePlayerProps) {
   const [inputUrl, setInputUrl] = useState('');
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,6 +75,11 @@ export default function YouTubePlayer({ videoId, onUrlSubmit, onTimeUpdate }: Yo
                 onTimeUpdateRef.current(time);
               }
             }, 100);
+
+            // Notify parent that player is ready
+            if (onPlayerReady) {
+              onPlayerReady(playerRef.current);
+            }
           },
           onError: (event: any) => {
             console.error('YouTube player error:', event.data);
