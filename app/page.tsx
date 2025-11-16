@@ -1,118 +1,95 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import YouTubePlayer from '@/components/YouTubePlayer';
-import SubtitlePanel from '@/components/SubtitlePanel';
-import StyleControl from '@/components/StyleControl';
-import { TimingConfig, DEFAULT_TIMING, deserializeTimingConfig } from '@/lib/timingUtils';
-
-interface Subtitle {
-  start: number;
-  end: number;
-  text: string;
-}
-
-const TIMING_STORAGE_KEY = 'dubtitle_timing_config';
+import Link from 'next/link';
 
 export default function Home() {
-  const [videoId, setVideoId] = useState<string>('');
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [bgColor, setBgColor] = useState<string>('#000000');
-  const [textColor, setTextColor] = useState<string>('#ffffff');
-  const [fontSize, setFontSize] = useState<number>(32);
-  const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>('');
-  const [timingConfig, setTimingConfig] = useState<TimingConfig>(DEFAULT_TIMING);
-
-  // Load timing config from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(TIMING_STORAGE_KEY);
-    if (stored) {
-      const config = deserializeTimingConfig(stored);
-      setTimingConfig(config);
-    }
-  }, []);
-
-
-  const extractVideoId = (url: string): string => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : '';
-  };
-
-  const handleUrlSubmit = async (url: string) => {
-    const id = extractVideoId(url);
-    if (id) {
-      setVideoId(id);
-      setError('');
-      setLoading(true);
-
-      try {
-        const response = await fetch('/api/subtitles', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ videoId: id }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || '字幕加载失败');
-        }
-
-        setSubtitles(data.subtitles || []);
-      } catch (err: any) {
-        console.error('字幕加载错误:', err);
-        setError(err.message || '字幕加载失败');
-        setSubtitles([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
   return (
-    <main className="h-screen flex flex-col bg-neutral-950">
-      {/* 双视窗布局 */}
-      <div className="flex-1 flex">
-        {/* 左侧：YouTube播放器 */}
-        <div className="w-1/2 flex items-center justify-center p-8 border-r border-neutral-800">
-          <YouTubePlayer
-            videoId={videoId}
-            onUrlSubmit={handleUrlSubmit}
-            onTimeUpdate={setCurrentTime}
-          />
+    <main className="min-h-screen bg-neutral-950 flex items-center justify-center p-6">
+      <div className="w-full max-w-4xl">
+        {/* 標題區 */}
+        <div className="text-center mb-12">
+          <h1 className="text-6xl font-bold tracking-tight bg-gradient-to-br from-neutral-100 via-neutral-300 to-neutral-500 bg-clip-text text-transparent mb-4">
+            Dubtitle
+          </h1>
+          <p className="text-xl text-neutral-400">
+            AI 驅動的雙語字幕學習平台
+          </p>
         </div>
 
-        {/* 右侧：字幕面板 */}
-        <div className="w-1/2 flex flex-col">
-          <div className="flex-1 flex items-center justify-center p-8">
-            <SubtitlePanel
-              currentTime={currentTime}
-              bgColor={bgColor}
-              textColor={textColor}
-              fontSize={fontSize}
-              subtitles={subtitles}
-              loading={loading}
-              error={error}
-              timingConfig={timingConfig}
-            />
-          </div>
+        {/* 功能卡片 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* 播放器頁面 */}
+          <Link href="/player">
+            <div className="group p-8 bg-neutral-900 hover:bg-neutral-800 rounded-xl border border-neutral-800 hover:border-neutral-600 transition-all cursor-pointer">
+              <div className="text-4xl mb-4">🎬</div>
+              <h2 className="text-xl font-bold text-neutral-100 mb-2">
+                播放器模式
+              </h2>
+              <p className="text-sm text-neutral-500 mb-4">
+                YouTube 影片播放與字幕時間校準
+              </p>
+              <div className="text-blue-500 text-sm group-hover:text-blue-400 flex items-center gap-1">
+                開始使用
+                <span className="group-hover:translate-x-1 transition-transform">→</span>
+              </div>
+            </div>
+          </Link>
 
-          {/* 样式控制面板 */}
-          <div className="border-t border-neutral-800">
-            <StyleControl
-              bgColor={bgColor}
-              textColor={textColor}
-              fontSize={fontSize}
-              onBgColorChange={setBgColor}
-              onTextColorChange={setTextColor}
-              onFontSizeChange={setFontSize}
-            />
+          {/* 字幕頁面 */}
+          <Link href="/subtitle">
+            <div className="group p-8 bg-neutral-900 hover:bg-neutral-800 rounded-xl border border-neutral-800 hover:border-neutral-600 transition-all cursor-pointer">
+              <div className="text-4xl mb-4">📺</div>
+              <h2 className="text-xl font-bold text-neutral-100 mb-2">
+                字幕模式
+              </h2>
+              <p className="text-sm text-neutral-500 mb-4">
+                全螢幕雙語字幕顯示與樣式自訂
+              </p>
+              <div className="text-blue-500 text-sm group-hover:text-blue-400 flex items-center gap-1">
+                開始使用
+                <span className="group-hover:translate-x-1 transition-transform">→</span>
+              </div>
+            </div>
+          </Link>
+
+          {/* 講義頁面 */}
+          <Link href="/notes">
+            <div className="group p-8 bg-gradient-to-br from-blue-900/20 to-purple-900/20 hover:from-blue-900/30 hover:to-purple-900/30 rounded-xl border border-blue-800/50 hover:border-blue-600/50 transition-all cursor-pointer">
+              <div className="text-4xl mb-4">📝</div>
+              <h2 className="text-xl font-bold text-neutral-100 mb-2">
+                講義模式
+                <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs rounded">NEW</span>
+              </h2>
+              <p className="text-sm text-neutral-400 mb-4">
+                即時字幕筆記與 Markdown 編輯器
+              </p>
+              <div className="text-blue-400 text-sm group-hover:text-blue-300 flex items-center gap-1">
+                開始使用
+                <span className="group-hover:translate-x-1 transition-transform">→</span>
+              </div>
+            </div>
+          </Link>
+        </div>
+
+        {/* 功能說明 */}
+        <div className="mt-12 p-6 bg-neutral-900 rounded-xl border border-neutral-800">
+          <h3 className="text-sm font-medium text-neutral-400 mb-4">使用說明</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-neutral-500">
+            <div>
+              <span className="text-neutral-400 font-medium">步驟 1:</span> 在播放器頁面輸入 YouTube 連結
+            </div>
+            <div>
+              <span className="text-neutral-400 font-medium">步驟 2:</span> 開啟字幕頁面進行全螢幕學習
+            </div>
+            <div>
+              <span className="text-neutral-400 font-medium">步驟 3:</span> 使用講義模式記錄學習筆記
+            </div>
           </div>
+        </div>
+
+        {/* 版本資訊 */}
+        <div className="mt-6 text-center text-xs text-neutral-600">
+          Dubtitle Beta v0.2 | 零成本啟動 | 完全開源
         </div>
       </div>
     </main>
