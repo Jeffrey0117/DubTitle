@@ -17,7 +17,7 @@ export default function Home() {
         </div>
 
         {/* 功能卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
           {/* 播放器頁面 */}
           <Link href="/player">
             <div className="group p-8 bg-neutral-900 hover:bg-neutral-800 rounded-xl border border-neutral-800 hover:border-neutral-600 transition-all cursor-pointer">
@@ -35,33 +35,16 @@ export default function Home() {
             </div>
           </Link>
 
-          {/* 字幕頁面 */}
+          {/* 字幕頁面 + 講義模式 */}
           <Link href="/subtitle">
-            <div className="group p-8 bg-neutral-900 hover:bg-neutral-800 rounded-xl border border-neutral-800 hover:border-neutral-600 transition-all cursor-pointer">
+            <div className="group p-8 bg-gradient-to-br from-blue-900/20 to-purple-900/20 hover:from-blue-900/30 hover:to-purple-900/30 rounded-xl border border-blue-800/50 hover:border-blue-600/50 transition-all cursor-pointer">
               <div className="text-4xl mb-4">📺</div>
               <h2 className="text-xl font-bold text-neutral-100 mb-2">
                 字幕模式
-              </h2>
-              <p className="text-sm text-neutral-500 mb-4">
-                全螢幕雙語字幕顯示與樣式自訂
-              </p>
-              <div className="text-blue-500 text-sm group-hover:text-blue-400 flex items-center gap-1">
-                開始使用
-                <span className="group-hover:translate-x-1 transition-transform">→</span>
-              </div>
-            </div>
-          </Link>
-
-          {/* 講義頁面 */}
-          <Link href="/notes">
-            <div className="group p-8 bg-gradient-to-br from-blue-900/20 to-purple-900/20 hover:from-blue-900/30 hover:to-purple-900/30 rounded-xl border border-blue-800/50 hover:border-blue-600/50 transition-all cursor-pointer">
-              <div className="text-4xl mb-4">📝</div>
-              <h2 className="text-xl font-bold text-neutral-100 mb-2">
-                講義模式
-                <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs rounded">NEW</span>
+                <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs rounded">講義</span>
               </h2>
               <p className="text-sm text-neutral-400 mb-4">
-                即時字幕筆記與 Markdown 編輯器
+                全螢幕雙語字幕顯示 + AI 難字分析
               </p>
               <div className="text-blue-400 text-sm group-hover:text-blue-300 flex items-center gap-1">
                 開始使用
@@ -74,15 +57,12 @@ export default function Home() {
         {/* 功能說明 */}
         <div className="mt-12 p-6 bg-neutral-900 rounded-xl border border-neutral-800">
           <h3 className="text-sm font-medium text-neutral-400 mb-4">使用說明</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-neutral-500">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-neutral-500">
             <div>
               <span className="text-neutral-400 font-medium">步驟 1:</span> 在播放器頁面輸入 YouTube 連結
             </div>
             <div>
-              <span className="text-neutral-400 font-medium">步驟 2:</span> 開啟字幕頁面進行全螢幕學習
-            </div>
-            <div>
-              <span className="text-neutral-400 font-medium">步驟 3:</span> 使用講義模式記錄學習筆記
+              <span className="text-neutral-400 font-medium">步驟 2:</span> 開啟字幕頁面進行全螢幕學習 + AI 難字分析
             </div>
           </div>
         </div>

@@ -20,10 +20,20 @@ interface TextStyle {
   highlighterPaddingY: number;
 }
 
+interface VocabularyItem {
+  word: string;
+  translation: string;
+}
+
+interface VocabularyMap {
+  [index: number]: VocabularyItem[];
+}
+
 const VIDEO_ID_STORAGE_KEY = 'dubtitle_video_id';
 const TIMING_STORAGE_KEY = 'dubtitle_timing_config';
 const TEXT_STYLE_STORAGE_KEY = 'dubtitle_text_style';
 const BROADCAST_CHANNEL_NAME = 'dubtitle-video';
+const VOCABULARY_CACHE_PREFIX = 'dubtitle_vocab_';
 
 export default function SubtitlePage() {
   const [videoId, setVideoId] = useState<string>('');
@@ -40,6 +50,9 @@ export default function SubtitlePage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [timingConfig, setTimingConfig] = useState<TimingConfig>(DEFAULT_TIMING);
+  const [vocabularyMap, setVocabularyMap] = useState<VocabularyMap>({});
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analysisProgress, setAnalysisProgress] = useState<string>('');
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
   // Initialize BroadcastChannel for listening to real-time updates
@@ -183,13 +196,64 @@ export default function SubtitlePage() {
         throw new Error(data.error || 'Failed to load subtitles');
       }
 
-      setSubtitles(data.subtitles || []);
+      const loadedSubtitles = data.subtitles || [];
+      setSubtitles(loadedSubtitles);
+
+      // 載入字幕後，檢查快取並觸發背景分析
+      if (loadedSubtitles.length > 0) {
+        loadOrAnalyzeVocabulary(id, loadedSubtitles);
+      }
     } catch (err: any) {
       console.error('Subtitle loading error:', err);
       setError(err.message || 'Failed to load subtitles');
       setSubtitles([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 載入或分析詞彙
+  const loadOrAnalyzeVocabulary = async (id: string, subs: Subtitle[]) => {
+    // 1. 先檢查 localStorage 快取
+    const cacheKey = `${VOCABULARY_CACHE_PREFIX}${id}`;
+    const cached = localStorage.getItem(cacheKey);
+
+    if (cached) {
+      try {
+        const cachedData = JSON.parse(cached);
+        setVocabularyMap(cachedData);
+        console.log('已載入快取的詞彙分析');
+        return;
+      } catch (err) {
+        console.warn('快取解析失敗，重新分析');
+      }
+    }
+
+    // 2. 沒有快取，背景執行批次分析
+    setIsAnalyzing(true);
+    setAnalysisProgress('準備分析...');
+
+    try {
+      const response = await fetch('/api/analyze-vocabulary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: id, subtitles: subs }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.vocabularies) {
+        setVocabularyMap(data.vocabularies);
+
+        // 存入 localStorage 快取
+        localStorage.setItem(cacheKey, JSON.stringify(data.vocabularies));
+        console.log(`詞彙分析完成: ${data.processed}/${data.total} 句`);
+      }
+    } catch (error) {
+      console.error('批次分析失敗:', error);
+    } finally {
+      setIsAnalyzing(false);
+      setAnalysisProgress('');
     }
   };
 
@@ -300,12 +364,49 @@ export default function SubtitlePage() {
     broadcastTextStyleChange(undefined, undefined, undefined, undefined, value);
   };
 
+  // 根據當前時間查找當前字幕和對應的難字
+  const getCurrentVocabulary = (): VocabularyItem[] => {
+    if (subtitles.length === 0) return [];
+
+    const currentIndex = subtitles.findIndex(
+      (sub) => currentTime >= sub.start && currentTime <= sub.end
+    );
+
+    if (currentIndex >= 0 && vocabularyMap[currentIndex]) {
+      return vocabularyMap[currentIndex];
+    }
+
+    return [];
+  };
+
+  const currentVocabulary = getCurrentVocabulary();
+
   return (
     <main className="h-screen flex flex-col bg-neutral-950 relative">
-      {/* Debug Info */}
-      <div className="absolute top-4 left-4 z-50 text-xs text-neutral-400 bg-neutral-900 px-3 py-1 rounded">
-        時間: {currentTime.toFixed(1)}s | 字幕數: {subtitles.length}
-      </div>
+      {/* 分析進度提示 */}
+      {isAnalyzing && (
+        <div className="absolute top-6 left-6 z-50 bg-blue-900/90 backdrop-blur-sm px-5 py-3 rounded-xl border border-blue-700 shadow-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-sm text-blue-100">AI 分析難字中...</span>
+          </div>
+        </div>
+      )}
+
+      {/* 講義模式：難字顯示區 */}
+      {!isAnalyzing && currentVocabulary.length > 0 && (
+        <div className="absolute top-6 left-6 z-50 bg-neutral-900/95 backdrop-blur-sm px-5 py-4 rounded-xl border border-neutral-700 shadow-2xl">
+          <div className="space-y-2">
+            {currentVocabulary.map((item, index) => (
+              <div key={index} className="flex items-baseline gap-2">
+                <span className="text-sm font-medium text-blue-400">{item.word}</span>
+                <span className="text-xs text-neutral-500">:</span>
+                <span className="text-sm text-neutral-300">{item.translation}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Full-screen subtitle panel */}
       <div className="flex-1 flex flex-col">
