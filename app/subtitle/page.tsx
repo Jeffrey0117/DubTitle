@@ -53,7 +53,9 @@ export default function SubtitlePage() {
   const [vocabularyMap, setVocabularyMap] = useState<VocabularyMap>({});
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisProgress, setAnalysisProgress] = useState<string>('');
+  const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState<number>(-1);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const analyzingRef = useRef<Set<number>>(new Set()); // 追蹤正在分析的字幕索引
 
   // Initialize BroadcastChannel for listening to real-time updates
   useEffect(() => {
@@ -199,9 +201,9 @@ export default function SubtitlePage() {
       const loadedSubtitles = data.subtitles || [];
       setSubtitles(loadedSubtitles);
 
-      // 載入字幕後，檢查快取並觸發背景分析
+      // 載入字幕後，從 localStorage 載入已有的詞彙快取
       if (loadedSubtitles.length > 0) {
-        loadOrAnalyzeVocabulary(id, loadedSubtitles);
+        loadVocabularyCache(id);
       }
     } catch (err: any) {
       console.error('Subtitle loading error:', err);
@@ -212,9 +214,8 @@ export default function SubtitlePage() {
     }
   };
 
-  // 載入或分析詞彙
-  const loadOrAnalyzeVocabulary = async (id: string, subs: Subtitle[]) => {
-    // 1. 先檢查 localStorage 快取
+  // 載入詞彙快取
+  const loadVocabularyCache = (id: string) => {
     const cacheKey = `${VOCABULARY_CACHE_PREFIX}${id}`;
     const cached = localStorage.getItem(cacheKey);
 
@@ -222,38 +223,71 @@ export default function SubtitlePage() {
       try {
         const cachedData = JSON.parse(cached);
         setVocabularyMap(cachedData);
-        console.log('已載入快取的詞彙分析');
-        return;
+        console.log('[前端] 已載入快取的詞彙分析，條目數:', Object.keys(cachedData).length);
       } catch (err) {
-        console.warn('快取解析失敗，重新分析');
+        console.warn('[前端] 快取解析失敗:', err);
       }
+    } else {
+      console.log('[前端] 沒有快取資料');
+    }
+  };
+
+  // 按需分析單句字幕
+  const analyzeSubtitle = async (index: number, text: string) => {
+    if (!videoId || !text || text.trim().length < 10) {
+      return;
     }
 
-    // 2. 沒有快取，背景執行批次分析
+    // 避免重複分析
+    if (analyzingRef.current.has(index)) {
+      console.log('[前端] 字幕', index, '正在分析中，跳過');
+      return;
+    }
+
+    // 檢查快取
+    if (vocabularyMap[index] !== undefined) {
+      console.log('[前端] 字幕', index, '已有快取，難字數:', vocabularyMap[index]?.length || 0);
+      return;
+    }
+
+    console.log('[前端] 開始分析字幕', index, ':', text.substring(0, 50));
+    analyzingRef.current.add(index);
     setIsAnalyzing(true);
-    setAnalysisProgress('準備分析...');
 
     try {
       const response = await fetch('/api/analyze-vocabulary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId: id, subtitles: subs }),
+        body: JSON.stringify({
+          videoId,
+          subtitleIndex: index,
+          text,
+        }),
       });
 
       const data = await response.json();
+      console.log('[前端] API 回應:', data);
 
-      if (data.success && data.vocabularies) {
-        setVocabularyMap(data.vocabularies);
+      if (data.success && data.vocabulary !== undefined) {
+        // 更新狀態
+        setVocabularyMap(prev => {
+          const updated = { ...prev, [index]: data.vocabulary };
 
-        // 存入 localStorage 快取
-        localStorage.setItem(cacheKey, JSON.stringify(data.vocabularies));
-        console.log(`詞彙分析完成: ${data.processed}/${data.total} 句`);
+          // 存入 localStorage 快取
+          const cacheKey = `${VOCABULARY_CACHE_PREFIX}${videoId}`;
+          localStorage.setItem(cacheKey, JSON.stringify(updated));
+
+          console.log('[前端] 字幕', index, '分析完成，難字數:', data.vocabulary.length, data.vocabulary);
+          return updated;
+        });
+      } else {
+        console.error('[前端] 分析失敗:', data.error);
       }
     } catch (error) {
-      console.error('批次分析失敗:', error);
+      console.error('[前端] 分析請求失敗:', error);
     } finally {
+      analyzingRef.current.delete(index);
       setIsAnalyzing(false);
-      setAnalysisProgress('');
     }
   };
 
@@ -364,18 +398,36 @@ export default function SubtitlePage() {
     broadcastTextStyleChange(undefined, undefined, undefined, undefined, value);
   };
 
-  // 根據當前時間查找當前字幕和對應的難字
-  const getCurrentVocabulary = (): VocabularyItem[] => {
-    if (subtitles.length === 0) return [];
+  // 監聽當前時間變化，更新當前字幕索引並觸發按需分析
+  useEffect(() => {
+    if (subtitles.length === 0) {
+      setCurrentSubtitleIndex(-1);
+      return;
+    }
 
-    const currentIndex = subtitles.findIndex(
+    const newIndex = subtitles.findIndex(
       (sub) => currentTime >= sub.start && currentTime <= sub.end
     );
 
-    if (currentIndex >= 0 && vocabularyMap[currentIndex]) {
-      return vocabularyMap[currentIndex];
-    }
+    if (newIndex !== currentSubtitleIndex) {
+      console.log('[前端] 字幕切換:', currentSubtitleIndex, '->', newIndex);
+      setCurrentSubtitleIndex(newIndex);
 
+      // 當切換到新字幕時，觸發按需分析
+      if (newIndex >= 0) {
+        analyzeSubtitle(newIndex, subtitles[newIndex].text);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, subtitles, currentSubtitleIndex]);
+
+  // 根據當前字幕索引獲取對應的難字
+  const getCurrentVocabulary = (): VocabularyItem[] => {
+    if (currentSubtitleIndex >= 0 && vocabularyMap[currentSubtitleIndex]) {
+      const vocab = vocabularyMap[currentSubtitleIndex];
+      console.log('[前端] 當前字幕', currentSubtitleIndex, '難字:', vocab);
+      return vocab;
+    }
     return [];
   };
 
@@ -383,6 +435,18 @@ export default function SubtitlePage() {
 
   return (
     <main className="h-screen flex flex-col bg-neutral-950 relative">
+      {/* 調試信息顯示區（右上角） */}
+      <div className="absolute top-6 right-6 z-50 bg-neutral-900/80 backdrop-blur-sm px-4 py-3 rounded-xl border border-neutral-700 shadow-2xl text-xs font-mono">
+        <div className="space-y-1 text-neutral-400">
+          <div>VideoID: <span className="text-neutral-300">{videoId || '未設置'}</span></div>
+          <div>字幕數: <span className="text-neutral-300">{subtitles.length}</span></div>
+          <div>當前索引: <span className="text-neutral-300">{currentSubtitleIndex}</span></div>
+          <div>快取條目: <span className="text-neutral-300">{Object.keys(vocabularyMap).length}</span></div>
+          <div>當前難字: <span className="text-neutral-300">{currentVocabulary.length}</span></div>
+          <div>正在分析: <span className={isAnalyzing ? 'text-yellow-400' : 'text-green-400'}>{isAnalyzing ? '是' : '否'}</span></div>
+        </div>
+      </div>
+
       {/* 分析進度提示 */}
       {isAnalyzing && (
         <div className="absolute top-6 left-6 z-50 bg-blue-900/90 backdrop-blur-sm px-5 py-3 rounded-xl border border-blue-700 shadow-2xl">
@@ -395,7 +459,8 @@ export default function SubtitlePage() {
 
       {/* 講義模式：難字顯示區 */}
       {!isAnalyzing && currentVocabulary.length > 0 && (
-        <div className="absolute top-6 left-6 z-50 bg-neutral-900/95 backdrop-blur-sm px-5 py-4 rounded-xl border border-neutral-700 shadow-2xl">
+        <div className="absolute top-28 left-6 z-50 bg-neutral-900/95 backdrop-blur-sm px-5 py-4 rounded-xl border border-neutral-700 shadow-2xl">
+          <div className="mb-2 text-xs text-neutral-500">字幕 #{currentSubtitleIndex} 的難字：</div>
           <div className="space-y-2">
             {currentVocabulary.map((item, index) => (
               <div key={index} className="flex items-baseline gap-2">

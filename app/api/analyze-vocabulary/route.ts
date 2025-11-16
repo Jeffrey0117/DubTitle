@@ -6,109 +6,134 @@ interface Subtitle {
   text: string;
 }
 
-interface VocabularyMap {
-  [index: number]: Array<{ word: string; translation: string }>;
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const { videoId, subtitles } = await request.json();
+    const { videoId, subtitleIndex, text } = await request.json();
 
-    if (!videoId || !Array.isArray(subtitles)) {
+    console.log('[API] 收到分析請求:', { videoId, subtitleIndex, text: text?.substring(0, 50) });
+
+    if (!videoId || subtitleIndex === undefined || !text) {
+      console.error('[API] 缺少必要參數:', { videoId, subtitleIndex, text });
       return NextResponse.json(
-        { error: '未提供 videoId 或字幕陣列' },
+        { error: '缺少必要參數 (videoId, subtitleIndex, text)' },
         { status: 400 }
       );
     }
 
-    const vocabularies: VocabularyMap = {};
-    let processedCount = 0;
+    // 跳過空白或過短的句子
+    if (text.trim().length < 10) {
+      console.log('[API] 句子太短，跳過分析');
+      return NextResponse.json({
+        success: true,
+        videoId,
+        subtitleIndex,
+        vocabulary: [],
+      });
+    }
 
-    // 批次分析所有字幕
-    for (let i = 0; i < subtitles.length; i++) {
-      const subtitle = subtitles[i];
+    // 檢查 API Key
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      console.error('[API] GROQ_API_KEY 未設置');
+      return NextResponse.json(
+        { error: 'API Key 未設置' },
+        { status: 500 }
+      );
+    }
 
-      // 跳過空白或過短的句子
-      if (!subtitle.text || subtitle.text.trim().length < 10) {
-        vocabularies[i] = [];
-        processedCount++;
-        continue;
-      }
+    console.log('[API] 準備呼叫 Groq API...');
 
-      try {
-        // 呼叫 Ollama API 分析單句
-        const ollamaResponse = await fetch('http://localhost:11434/api/generate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'qwen3:4b',
-            prompt: `分析以下英文句子，找出最多3個難度較高的單字（中高級以上），每個單字提供中文翻譯。
+    try {
+      // 呼叫 Groq API 分析單句
+      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: '你是英文教學助手，專門分析句子中的難字。只回傳 JSON 格式，不要其他說明。'
+            },
+            {
+              role: 'user',
+              content: `分析以下英文句子，找出最多3個難度較高的單字（中高級以上），每個單字提供中文翻譯。
 格式要求：只回傳 JSON 陣列，格式為 [{"word": "英文單字", "translation": "中文翻譯"}]
 如果沒有難字，回傳空陣列 []
 
-句子：${subtitle.text}
+句子：${text}
 
-回傳：`,
-            stream: false,
-            options: {
-              temperature: 0.3,
+回傳：`
             }
-          }),
+          ],
+          temperature: 0.3,
+          max_tokens: 200,
+        }),
+      });
+
+      console.log('[API] Groq API 回應狀態:', groqResponse.status);
+
+      if (!groqResponse.ok) {
+        const errorText = await groqResponse.text();
+        console.error('[API] Groq API 錯誤:', errorText);
+        return NextResponse.json({
+          success: false,
+          error: `Groq API 錯誤: ${groqResponse.status}`,
+        }, { status: 500 });
+      }
+
+      const groqData = await groqResponse.json();
+      const responseText = groqData.choices?.[0]?.message?.content?.trim() || '[]';
+
+      console.log('[API] Groq API 原始回應:', responseText);
+
+      try {
+        // 移除可能的 markdown 標記
+        const cleanedText = responseText
+          .replace(/```json\n?/g, '')
+          .replace(/```\n?/g, '')
+          .trim();
+
+        let vocabulary = JSON.parse(cleanedText);
+
+        // 確保最多只有 3 個單字
+        if (Array.isArray(vocabulary) && vocabulary.length > 3) {
+          vocabulary = vocabulary.slice(0, 3);
+        }
+
+        const result = Array.isArray(vocabulary) ? vocabulary : [];
+        console.log('[API] 解析成功，難字數量:', result.length, result);
+
+        return NextResponse.json({
+          success: true,
+          videoId,
+          subtitleIndex,
+          vocabulary: result,
         });
 
-        if (ollamaResponse.ok) {
-          const ollamaData = await ollamaResponse.json();
-          const responseText = ollamaData.response?.trim() || '[]';
-
-          try {
-            // 移除可能的 markdown 標記
-            const cleanedText = responseText
-              .replace(/```json\n?/g, '')
-              .replace(/```\n?/g, '')
-              .trim();
-
-            let vocabulary = JSON.parse(cleanedText);
-
-            // 確保最多只有 3 個單字
-            if (Array.isArray(vocabulary) && vocabulary.length > 3) {
-              vocabulary = vocabulary.slice(0, 3);
-            }
-
-            vocabularies[i] = Array.isArray(vocabulary) ? vocabulary : [];
-          } catch (parseError) {
-            console.error(`解析第 ${i} 句失敗:`, parseError);
-            vocabularies[i] = [];
-          }
-        } else {
-          vocabularies[i] = [];
-        }
-      } catch (error) {
-        console.error(`分析第 ${i} 句失敗:`, error);
-        vocabularies[i] = [];
+      } catch (parseError) {
+        console.error('[API] JSON 解析失敗:', parseError, '原始內容:', responseText);
+        return NextResponse.json({
+          success: true,
+          videoId,
+          subtitleIndex,
+          vocabulary: [],
+        });
       }
 
-      processedCount++;
-
-      // 每處理 10 句輸出進度
-      if (processedCount % 10 === 0) {
-        console.log(`已處理: ${processedCount}/${subtitles.length}`);
-      }
+    } catch (fetchError: any) {
+      console.error('[API] Fetch 錯誤:', fetchError);
+      return NextResponse.json({
+        success: false,
+        error: fetchError.message || 'API 呼叫失敗',
+      }, { status: 500 });
     }
 
-    console.log(`完成分析: ${processedCount}/${subtitles.length} 句`);
-
-    return NextResponse.json({
-      success: true,
-      videoId,
-      vocabularies,
-      total: subtitles.length,
-      processed: processedCount,
-    });
-
   } catch (error: any) {
-    console.error('批次分析詞彙失敗:', error);
+    console.error('[API] 總體錯誤:', error);
     return NextResponse.json(
       {
         success: false,
