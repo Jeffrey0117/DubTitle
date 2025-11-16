@@ -16,7 +16,8 @@ interface TextStyle {
   textBold: boolean;
   textShadowStrength: number;
   highlighterColor: string;
-  highlighterPadding: number;
+  highlighterPaddingX: number;
+  highlighterPaddingY: number;
 }
 
 const VIDEO_ID_STORAGE_KEY = 'dubtitle_video_id';
@@ -33,7 +34,8 @@ export default function SubtitlePage() {
   const [textBold, setTextBold] = useState<boolean>(false);
   const [textShadowStrength, setTextShadowStrength] = useState<number>(0);
   const [highlighterColor, setHighlighterColor] = useState<string>('transparent');
-  const [highlighterPadding, setHighlighterPadding] = useState<number>(0);
+  const [highlighterPaddingX, setHighlighterPaddingX] = useState<number>(0);
+  const [highlighterPaddingY, setHighlighterPaddingY] = useState<number>(0);
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -73,7 +75,8 @@ export default function SubtitlePage() {
             if (typeof data?.textBold === 'boolean') setTextBold(data.textBold);
             if (typeof data?.textShadowStrength === 'number') setTextShadowStrength(data.textShadowStrength);
             if (data?.highlighterColor) setHighlighterColor(data.highlighterColor);
-            if (typeof data?.highlighterPadding === 'number') setHighlighterPadding(data.highlighterPadding);
+            if (typeof data?.highlighterPaddingX === 'number') setHighlighterPaddingX(data.highlighterPaddingX);
+            if (typeof data?.highlighterPaddingY === 'number') setHighlighterPaddingY(data.highlighterPaddingY);
             break;
 
           case 'TIMING_CONFIG_CHANGED':
@@ -118,7 +121,8 @@ export default function SubtitlePage() {
         if (typeof style.textBold === 'boolean') setTextBold(style.textBold);
         if (typeof style.textShadowStrength === 'number') setTextShadowStrength(style.textShadowStrength);
         if (style.highlighterColor) setHighlighterColor(style.highlighterColor);
-        if (typeof style.highlighterPadding === 'number') setHighlighterPadding(style.highlighterPadding);
+        if (typeof style.highlighterPaddingX === 'number') setHighlighterPaddingX(style.highlighterPaddingX);
+        if (typeof style.highlighterPaddingY === 'number') setHighlighterPaddingY(style.highlighterPaddingY);
       } catch (err) {
         console.warn('Failed to parse text style from localStorage:', err);
       }
@@ -144,7 +148,8 @@ export default function SubtitlePage() {
           if (typeof style.textBold === 'boolean') setTextBold(style.textBold);
           if (typeof style.textShadowStrength === 'number') setTextShadowStrength(style.textShadowStrength);
           if (style.highlighterColor) setHighlighterColor(style.highlighterColor);
-          if (typeof style.highlighterPadding === 'number') setHighlighterPadding(style.highlighterPadding);
+          if (typeof style.highlighterPaddingX === 'number') setHighlighterPaddingX(style.highlighterPaddingX);
+          if (typeof style.highlighterPaddingY === 'number') setHighlighterPaddingY(style.highlighterPaddingY);
         } catch (err) {
           console.warn('Failed to parse text style from localStorage:', err);
         }
@@ -207,12 +212,14 @@ export default function SubtitlePage() {
     newTextBold?: boolean,
     newTextShadowStrength?: number,
     newHighlighterColor?: string,
-    newHighlighterPadding?: number
+    newHighlighterPaddingX?: number,
+    newHighlighterPaddingY?: number
   ) => {
     const updatedBold = newTextBold !== undefined ? newTextBold : textBold;
     const updatedShadowStrength = newTextShadowStrength !== undefined ? newTextShadowStrength : textShadowStrength;
     const updatedHighlighterColor = newHighlighterColor !== undefined ? newHighlighterColor : highlighterColor;
-    const updatedHighlighterPadding = newHighlighterPadding !== undefined ? newHighlighterPadding : highlighterPadding;
+    const updatedHighlighterPaddingX = newHighlighterPaddingX !== undefined ? newHighlighterPaddingX : highlighterPaddingX;
+    const updatedHighlighterPaddingY = newHighlighterPaddingY !== undefined ? newHighlighterPaddingY : highlighterPaddingY;
 
     if (broadcastChannelRef.current) {
       broadcastChannelRef.current.postMessage({
@@ -221,7 +228,8 @@ export default function SubtitlePage() {
           textBold: updatedBold,
           textShadowStrength: updatedShadowStrength,
           highlighterColor: updatedHighlighterColor,
-          highlighterPadding: updatedHighlighterPadding,
+          highlighterPaddingX: updatedHighlighterPaddingX,
+          highlighterPaddingY: updatedHighlighterPaddingY,
         },
       });
     }
@@ -231,7 +239,8 @@ export default function SubtitlePage() {
       textBold: updatedBold,
       textShadowStrength: updatedShadowStrength,
       highlighterColor: updatedHighlighterColor,
-      highlighterPadding: updatedHighlighterPadding,
+      highlighterPaddingX: updatedHighlighterPaddingX,
+      highlighterPaddingY: updatedHighlighterPaddingY,
     };
     localStorage.setItem(TEXT_STYLE_STORAGE_KEY, JSON.stringify(textStyle));
   };
@@ -268,22 +277,27 @@ export default function SubtitlePage() {
 
   const handleTextBoldChange = (value: boolean) => {
     setTextBold(value);
-    broadcastTextStyleChange(value, undefined, undefined, undefined);
+    broadcastTextStyleChange(value, undefined, undefined, undefined, undefined);
   };
 
   const handleTextShadowStrengthChange = (value: number) => {
     setTextShadowStrength(value);
-    broadcastTextStyleChange(undefined, value, undefined, undefined);
+    broadcastTextStyleChange(undefined, value, undefined, undefined, undefined);
   };
 
   const handleHighlighterColorChange = (value: string) => {
     setHighlighterColor(value);
-    broadcastTextStyleChange(undefined, undefined, value, undefined);
+    broadcastTextStyleChange(undefined, undefined, value, undefined, undefined);
   };
 
-  const handleHighlighterPaddingChange = (value: number) => {
-    setHighlighterPadding(value);
-    broadcastTextStyleChange(undefined, undefined, undefined, value);
+  const handleHighlighterPaddingXChange = (value: number) => {
+    setHighlighterPaddingX(value);
+    broadcastTextStyleChange(undefined, undefined, undefined, value, undefined);
+  };
+
+  const handleHighlighterPaddingYChange = (value: number) => {
+    setHighlighterPaddingY(value);
+    broadcastTextStyleChange(undefined, undefined, undefined, undefined, value);
   };
 
   return (
@@ -309,7 +323,8 @@ export default function SubtitlePage() {
             textBold={textBold}
             textShadowStrength={textShadowStrength}
             highlighterColor={highlighterColor}
-            highlighterPadding={highlighterPadding}
+            highlighterPaddingX={highlighterPaddingX}
+            highlighterPaddingY={highlighterPaddingY}
           />
         </div>
 
@@ -327,11 +342,13 @@ export default function SubtitlePage() {
             textBold={textBold}
             textShadowStrength={textShadowStrength}
             highlighterColor={highlighterColor}
-            highlighterPadding={highlighterPadding}
+            highlighterPaddingX={highlighterPaddingX}
+            highlighterPaddingY={highlighterPaddingY}
             onTextBoldChange={handleTextBoldChange}
             onTextShadowStrengthChange={handleTextShadowStrengthChange}
             onHighlighterColorChange={handleHighlighterColorChange}
-            onHighlighterPaddingChange={handleHighlighterPaddingChange}
+            onHighlighterPaddingXChange={handleHighlighterPaddingXChange}
+            onHighlighterPaddingYChange={handleHighlighterPaddingYChange}
           />
         </div>
       </div>

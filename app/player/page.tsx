@@ -149,10 +149,22 @@ export default function PlayerPage() {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col bg-neutral-950 overflow-hidden">
-      {/* Full Screen Player */}
-      <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
-        <div className="w-full max-w-4xl space-y-6">
+    <div className="w-full min-h-screen flex flex-col bg-neutral-950">
+      {/* Header with Title */}
+      <div className="w-full border-b border-neutral-800/50">
+        <div className="max-w-6xl mx-auto px-6 py-8 text-center">
+          <h1 className="text-5xl font-bold tracking-tight bg-gradient-to-br from-neutral-100 via-neutral-300 to-neutral-500 bg-clip-text text-transparent">
+            Dubtitle
+          </h1>
+          <p className="mt-2 text-sm text-neutral-500">
+            雙語字幕同步播放器
+          </p>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex items-center justify-center overflow-y-auto">
+        <div className="w-full max-w-6xl mx-auto px-6 py-10 space-y-8">
           <YouTubePlayer
             videoId={videoId}
             onUrlSubmit={handleUrlSubmit}
@@ -166,6 +178,15 @@ export default function PlayerPage() {
             onTimingChange={handleTimingConfigChange}
             initialConfig={timingConfig}
           />
+        </div>
+      </div>
+
+      {/* Footer Description */}
+      <div className="w-full border-t border-neutral-800/50">
+        <div className="max-w-4xl mx-auto px-6 py-6">
+          <p className="text-xs text-neutral-600 leading-relaxed">
+            dubtitle 是一款專為學習外語設計的雙語字幕播放工具。支援 YouTube 影片同步顯示原文與譯文字幕，並提供時間軸校準功能，讓您精確對齊字幕與影片，提升語言學習效率。
+          </p>
         </div>
       </div>
     </div>

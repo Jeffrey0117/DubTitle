@@ -18,19 +18,19 @@ export default function StyleControl({
   onFontSizeChange,
 }: StyleControlProps) {
   return (
-    <div className="p-6 bg-neutral-900 space-y-4">
-      <h3 className="text-sm font-medium text-neutral-400 mb-4">字幕樣式</h3>
+    <div className="p-4 bg-neutral-900 space-y-3">
+      <h3 className="text-xs font-medium text-neutral-400 mb-2">字幕樣式</h3>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         {/* 背景顏色 */}
-        <div className="space-y-2">
+        <div className="space-y-1">
           <label className="text-xs text-neutral-500">背景色</label>
           <div className="flex items-center gap-2">
             <input
               type="color"
               value={bgColor}
               onChange={(e) => onBgColorChange(e.target.value)}
-              className="w-10 h-10 rounded cursor-pointer bg-transparent border border-neutral-700"
+              className="w-8 h-8 rounded cursor-pointer bg-transparent border border-neutral-700"
             />
             <input
               type="text"
@@ -42,14 +42,14 @@ export default function StyleControl({
         </div>
 
         {/* 字幕顏色 */}
-        <div className="space-y-2">
+        <div className="space-y-1">
           <label className="text-xs text-neutral-500">字幕色</label>
           <div className="flex items-center gap-2">
             <input
               type="color"
               value={textColor}
               onChange={(e) => onTextColorChange(e.target.value)}
-              className="w-10 h-10 rounded cursor-pointer bg-transparent border border-neutral-700"
+              className="w-8 h-8 rounded cursor-pointer bg-transparent border border-neutral-700"
             />
             <input
               type="text"
@@ -61,7 +61,7 @@ export default function StyleControl({
         </div>
 
         {/* 字體大小 */}
-        <div className="space-y-2">
+        <div className="space-y-1">
           <label className="text-xs text-neutral-500">字體大小</label>
           <div className="flex items-center gap-2">
             <input

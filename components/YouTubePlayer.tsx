@@ -108,21 +108,21 @@ export default function YouTubePlayer({ videoId, onUrlSubmit, onTimeUpdate }: Yo
   };
 
   return (
-    <div className="w-full max-w-3xl space-y-6">
+    <div className="w-full space-y-6">
       {/* URL輸入框 - 極簡設計 */}
       <form onSubmit={handleSubmit} className="space-y-2">
         <input
           type="text"
           value={inputUrl}
           onChange={(e) => setInputUrl(e.target.value)}
-          placeholder="輸入 YouTube 鏈接..."
+          placeholder="輸入 YouTube 連結..."
           className="w-full px-4 py-3 bg-neutral-900 border border-neutral-700 rounded-lg text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-500 transition-colors"
         />
         <button
           type="submit"
           className="w-full px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-100 rounded-lg transition-colors text-sm font-medium"
         >
-          載入視頻
+          載入影片
         </button>
       </form>
 
@@ -130,13 +130,13 @@ export default function YouTubePlayer({ videoId, onUrlSubmit, onTimeUpdate }: Yo
       {videoId && (
         <div
           ref={containerRef}
-          className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden shadow-2xl"
+          className="w-full relative aspect-video bg-neutral-900 rounded-lg overflow-hidden shadow-2xl"
         />
       )}
 
       {!videoId && (
-        <div className="aspect-video bg-neutral-900 rounded-lg flex items-center justify-center border border-dashed border-neutral-700">
-          <p className="text-neutral-500 text-sm">等待載入視頻...</p>
+        <div className="w-full aspect-video bg-neutral-900 rounded-lg flex items-center justify-center border border-dashed border-neutral-700">
+          <p className="text-neutral-500 text-sm">等待載入影片...</p>
         </div>
       )}
     </div>

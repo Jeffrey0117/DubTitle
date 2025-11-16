@@ -4,26 +4,30 @@ interface TextStyleControlProps {
   textBold: boolean;
   textShadowStrength: number;
   highlighterColor: string;
-  highlighterPadding: number;
+  highlighterPaddingX: number;
+  highlighterPaddingY: number;
   onTextBoldChange: (value: boolean) => void;
   onTextShadowStrengthChange: (value: number) => void;
   onHighlighterColorChange: (value: string) => void;
-  onHighlighterPaddingChange: (value: number) => void;
+  onHighlighterPaddingXChange: (value: number) => void;
+  onHighlighterPaddingYChange: (value: number) => void;
 }
 
 export default function TextStyleControl({
   textBold,
   textShadowStrength,
   highlighterColor,
-  highlighterPadding,
+  highlighterPaddingX,
+  highlighterPaddingY,
   onTextBoldChange,
   onTextShadowStrengthChange,
   onHighlighterColorChange,
-  onHighlighterPaddingChange,
+  onHighlighterPaddingXChange,
+  onHighlighterPaddingYChange,
 }: TextStyleControlProps) {
   return (
-    <div className="p-6 bg-neutral-900 space-y-6">
-      <h3 className="text-sm font-medium text-neutral-400 mb-4">文字效果</h3>
+    <div className="p-4 bg-neutral-900 space-y-3">
+      <h3 className="text-xs font-medium text-neutral-400 mb-2">文字效果</h3>
 
       {/* 粗體 - 簡單複選框 */}
       <div className="flex items-center gap-3">
@@ -79,19 +83,36 @@ export default function TextStyleControl({
         </div>
       </div>
 
-      {/* 螢光筆範圍 - 滑塊 0-20px */}
+      {/* 螢光筆左右寬度 - 滑塊 0-30px */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <label className="text-xs text-neutral-400">螢光筆範圍</label>
-          <span className="text-xs text-neutral-500">{highlighterPadding}px</span>
+          <label className="text-xs text-neutral-400">螢光筆左右寬度</label>
+          <span className="text-xs text-neutral-500">{highlighterPaddingX}px</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="30"
+          step="1"
+          value={highlighterPaddingX}
+          onChange={(e) => onHighlighterPaddingXChange(parseInt(e.target.value))}
+          className="w-full h-1 bg-neutral-700 rounded cursor-pointer accent-neutral-500"
+        />
+      </div>
+
+      {/* 螢光筆上下高度 - 滑塊 0-20px */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <label className="text-xs text-neutral-400">螢光筆上下高度</label>
+          <span className="text-xs text-neutral-500">{highlighterPaddingY}px</span>
         </div>
         <input
           type="range"
           min="0"
           max="20"
           step="1"
-          value={highlighterPadding}
-          onChange={(e) => onHighlighterPaddingChange(parseInt(e.target.value))}
+          value={highlighterPaddingY}
+          onChange={(e) => onHighlighterPaddingYChange(parseInt(e.target.value))}
           className="w-full h-1 bg-neutral-700 rounded cursor-pointer accent-neutral-500"
         />
       </div>

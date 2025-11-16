@@ -21,7 +21,8 @@ interface SubtitlePanelProps {
   textBold?: boolean;
   textShadowStrength?: number;
   highlighterColor?: string;
-  highlighterPadding?: number;
+  highlighterPaddingX?: number;
+  highlighterPaddingY?: number;
 }
 
 export default function SubtitlePanel({
@@ -36,7 +37,8 @@ export default function SubtitlePanel({
   textBold = false,
   textShadowStrength = 0,
   highlighterColor = 'transparent',
-  highlighterPadding = 0
+  highlighterPaddingX = 0,
+  highlighterPaddingY = 0
 }: SubtitlePanelProps) {
   const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -135,8 +137,10 @@ export default function SubtitlePanel({
           {highlighterColor !== 'transparent' ? (
             <span style={{
               backgroundColor: highlighterColor,
-              paddingLeft: `${highlighterPadding}px`,
-              paddingRight: `${highlighterPadding}px`,
+              paddingLeft: `${highlighterPaddingX}px`,
+              paddingRight: `${highlighterPaddingX}px`,
+              paddingTop: `${highlighterPaddingY}px`,
+              paddingBottom: `${highlighterPaddingY}px`,
             }}>
               {displayText}
             </span>

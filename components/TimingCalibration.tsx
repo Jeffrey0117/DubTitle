@@ -77,12 +77,12 @@ export default function TimingCalibration({
   return (
     <div className="p-6 bg-neutral-900 space-y-4 border-t border-neutral-800">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-neutral-400">字幕时间校准</h3>
+        <h3 className="text-sm font-medium text-neutral-400">字幕時間校準</h3>
         <button
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="text-xs text-neutral-500 hover:text-neutral-300 transition"
         >
-          {showAdvanced ? '隐藏' : '显示'}高级
+          {showAdvanced ? '隱藏' : '顯示'}高級
         </button>
       </div>
 
@@ -91,7 +91,7 @@ export default function TimingCalibration({
         {/* Offset Control */}
         <div className="space-y-2">
           <label className="text-xs text-neutral-500">
-            时间偏移 (秒)
+            時間偏移 (秒)
             <span className="ml-2 text-neutral-600">
               {(() => {
                 const userOffset = config.offset - BASE_OFFSET;
@@ -127,7 +127,7 @@ export default function TimingCalibration({
         {/* Pre-Roll Control */}
         <div className="space-y-2">
           <label className="text-xs text-neutral-500">
-            提前显示 (ms)
+            提前顯示 (ms)
             <span className="ml-2 text-neutral-600">{config.preRoll}</span>
           </label>
           <input
@@ -158,7 +158,7 @@ export default function TimingCalibration({
         {/* Post-Roll Control */}
         <div className="space-y-2">
           <label className="text-xs text-neutral-500">
-            延迟隐藏 (ms)
+            延遲隱藏 (ms)
             <span className="ml-2 text-neutral-600">{config.postRoll}</span>
           </label>
           <input
@@ -192,7 +192,7 @@ export default function TimingCalibration({
         <div className="p-4 bg-blue-950 border border-blue-800 rounded space-y-3">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-blue-300 font-medium">智能检测建议</p>
+              <p className="text-sm text-blue-300 font-medium">智能檢測建議</p>
               <p className="text-xs text-blue-200 mt-1">{smartDetection.analysis}</p>
               <p className="text-xs text-blue-400 mt-2">
                 置信度: {smartDetection.confidence}%
@@ -203,7 +203,7 @@ export default function TimingCalibration({
                 onClick={handleApplySuggestion}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition whitespace-nowrap ml-4"
               >
-                应用建议
+                應用建議
               </button>
             )}
           </div>
@@ -215,7 +215,7 @@ export default function TimingCalibration({
         <div className="p-4 bg-neutral-800 rounded space-y-4 border border-neutral-700">
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-neutral-400">当前配置 (JSON)</label>
+              <label className="text-xs text-neutral-400">當前配置 (JSON)</label>
               <textarea
                 value={JSON.stringify(config, null, 2)}
                 readOnly
@@ -232,7 +232,7 @@ export default function TimingCalibration({
                   onChange={(e) => setAutoSuggestion(e.target.checked)}
                   className="rounded"
                 />
-                自动应用智能建议
+                自動應用智能建議
               </label>
             </div>
 
@@ -240,7 +240,7 @@ export default function TimingCalibration({
               onClick={handleReset}
               className="w-full px-4 py-2 bg-neutral-700 hover:bg-neutral-600 text-neutral-200 text-sm rounded transition"
             >
-              重置为默认值
+              重置為預設值
             </button>
           </div>
         </div>
@@ -248,7 +248,7 @@ export default function TimingCalibration({
 
       {/* Info Text */}
       <p className="text-xs text-neutral-500">
-        偏移: 调整所有字幕时间 | 提前显示: 字幕更早出现 | 延迟隐藏: 字幕停留更久
+        偏移: 調整所有字幕時間 | 提前顯示: 字幕更早出現 | 延遲隱藏: 字幕停留更久
       </p>
     </div>
   );
