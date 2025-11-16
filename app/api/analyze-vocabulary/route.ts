@@ -10,10 +10,10 @@ export async function POST(request: NextRequest) {
   try {
     const { videoId, subtitleIndex, text } = await request.json();
 
-    console.log('[API] 收到分析請求:', { videoId, subtitleIndex, text: text?.substring(0, 50) });
+    console.log('[API] 🔍 收到分析請求:', { videoId, subtitleIndex, text: text?.substring(0, 50) });
 
     if (!videoId || subtitleIndex === undefined || !text) {
-      console.error('[API] 缺少必要參數:', { videoId, subtitleIndex, text });
+      console.error('[API] ❌ 缺少必要參數:', { videoId, subtitleIndex, text });
       return NextResponse.json(
         { error: '缺少必要參數 (videoId, subtitleIndex, text)' },
         { status: 400 }
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     // 跳過空白或過短的句子
     if (text.trim().length < 10) {
-      console.log('[API] 句子太短，跳過分析');
+      console.log('[API] ⏭️  句子太短，跳過分析');
       return NextResponse.json({
         success: true,
         videoId,
@@ -34,14 +34,14 @@ export async function POST(request: NextRequest) {
     // 檢查 API Key
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
-      console.error('[API] GROQ_API_KEY 未設置');
+      console.error('[API] ❌ GROQ_API_KEY 未設置');
       return NextResponse.json(
         { error: 'API Key 未設置' },
         { status: 500 }
       );
     }
 
-    console.log('[API] 準備呼叫 Groq API...');
+    console.log('[API] 🚀 準備呼叫 Groq API...');
 
     try {
       // 呼叫 Groq API 分析單句
@@ -60,9 +60,15 @@ export async function POST(request: NextRequest) {
             },
             {
               role: 'user',
-              content: `分析以下英文句子，找出最多3個難度較高的單字（中高級以上），每個單字提供中文翻譯。
-格式要求：只回傳 JSON 陣列，格式為 [{"word": "英文單字", "translation": "中文翻譯"}]
-如果沒有難字，回傳空陣列 []
+              content: `分析以下英文句子，找出最多3個值得學習的單字（中級或以上，包括常用片語、慣用語），每個單字提供中文翻譯。
+
+判斷標準：
+- 非基礎單字（不是 am/is/are/the/a/an 等）
+- 具有學習價值的動詞、名詞、形容詞
+- 常用片語或慣用語
+
+格式要求：只回傳 JSON 陣列，格式為 [{"word": "英文單字或片語", "translation": "中文翻譯"}]
+如果沒有值得學習的單字，回傳空陣列 []
 
 句子：${text}
 
@@ -74,11 +80,11 @@ export async function POST(request: NextRequest) {
         }),
       });
 
-      console.log('[API] Groq API 回應狀態:', groqResponse.status);
+      console.log('[API] 📡 Groq API 回應狀態:', groqResponse.status);
 
       if (!groqResponse.ok) {
         const errorText = await groqResponse.text();
-        console.error('[API] Groq API 錯誤:', errorText);
+        console.error('[API] ❌ Groq API 錯誤:', errorText);
         return NextResponse.json({
           success: false,
           error: `Groq API 錯誤: ${groqResponse.status}`,
@@ -88,7 +94,7 @@ export async function POST(request: NextRequest) {
       const groqData = await groqResponse.json();
       const responseText = groqData.choices?.[0]?.message?.content?.trim() || '[]';
 
-      console.log('[API] Groq API 原始回應:', responseText);
+      console.log('[API] 📝 Groq API 原始回應:', responseText);
 
       try {
         // 移除可能的 markdown 標記
@@ -105,7 +111,7 @@ export async function POST(request: NextRequest) {
         }
 
         const result = Array.isArray(vocabulary) ? vocabulary : [];
-        console.log('[API] 解析成功，難字數量:', result.length, result);
+        console.log('[API] ✅ 解析成功，難字數量:', result.length, result);
 
         return NextResponse.json({
           success: true,
@@ -115,7 +121,7 @@ export async function POST(request: NextRequest) {
         });
 
       } catch (parseError) {
-        console.error('[API] JSON 解析失敗:', parseError, '原始內容:', responseText);
+        console.error('[API] ⚠️  JSON 解析失敗:', parseError, '原始內容:', responseText);
         return NextResponse.json({
           success: true,
           videoId,
@@ -125,7 +131,7 @@ export async function POST(request: NextRequest) {
       }
 
     } catch (fetchError: any) {
-      console.error('[API] Fetch 錯誤:', fetchError);
+      console.error('[API] ❌ Fetch 錯誤:', fetchError);
       return NextResponse.json({
         success: false,
         error: fetchError.message || 'API 呼叫失敗',
@@ -133,7 +139,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error: any) {
-    console.error('[API] 總體錯誤:', error);
+    console.error('[API] ❌ 總體錯誤:', error);
     return NextResponse.json(
       {
         success: false,

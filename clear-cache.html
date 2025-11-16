@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>清除 Dubtitle 快取</title>
+    <style>
+        body {
+            font-family: system-ui;
+            background: #0a0a0a;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background: #1a1a1a;
+            padding: 40px;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .result {
+            margin-top: 20px;
+            color: #4ade80;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>清除 Dubtitle 詞彙快取</h1>
+        <p>點擊按鈕清除所有已快取的難字分析資料</p>
+        <button onclick="clearCache()">清除快取</button>
+        <div id="result" class="result"></div>
+    </div>
+    <script>
+        function clearCache() {
+            const keys = Object.keys(localStorage);
+            const vocabKeys = keys.filter(k => k.startsWith('dubtitle_vocab_'));
+
+            vocabKeys.forEach(k => localStorage.removeItem(k));
+
+            document.getElementById('result').innerHTML =
+                `✅ 已清除 ${vocabKeys.length} 個詞彙快取<br>請重新整理字幕頁面`;
+        }
+    </script>
+</body>
+</html>

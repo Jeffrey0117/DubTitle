@@ -223,34 +223,35 @@ export default function SubtitlePage() {
       try {
         const cachedData = JSON.parse(cached);
         setVocabularyMap(cachedData);
-        console.log('[前端] 已載入快取的詞彙分析，條目數:', Object.keys(cachedData).length);
+        console.log('[前端] 💾 已載入快取的詞彙分析，條目數:', Object.keys(cachedData).length);
       } catch (err) {
-        console.warn('[前端] 快取解析失敗:', err);
+        console.warn('[前端] ⚠️  快取解析失敗:', err);
       }
     } else {
-      console.log('[前端] 沒有快取資料');
+      console.log('[前端] 📭 沒有快取資料');
     }
   };
 
   // 按需分析單句字幕
   const analyzeSubtitle = async (index: number, text: string) => {
     if (!videoId || !text || text.trim().length < 10) {
+      console.log('[前端] 跳過分析 - videoId:', videoId, 'text長度:', text?.length);
       return;
     }
 
     // 避免重複分析
     if (analyzingRef.current.has(index)) {
-      console.log('[前端] 字幕', index, '正在分析中，跳過');
+      console.log('[前端] ⏸️  字幕', index, '正在分析中，跳過重複呼叫');
       return;
     }
 
     // 檢查快取
     if (vocabularyMap[index] !== undefined) {
-      console.log('[前端] 字幕', index, '已有快取，難字數:', vocabularyMap[index]?.length || 0);
+      console.log('[前端] ✅ 字幕', index, '已有快取，難字數:', vocabularyMap[index]?.length || 0);
       return;
     }
 
-    console.log('[前端] 開始分析字幕', index, ':', text.substring(0, 50));
+    console.log('[前端] 🚀 開始分析字幕', index, ':', text.substring(0, 50));
     analyzingRef.current.add(index);
     setIsAnalyzing(true);
 
@@ -266,7 +267,7 @@ export default function SubtitlePage() {
       });
 
       const data = await response.json();
-      console.log('[前端] API 回應:', data);
+      console.log('[前端] 📦 API 回應:', data);
 
       if (data.success && data.vocabulary !== undefined) {
         // 更新狀態
@@ -277,17 +278,18 @@ export default function SubtitlePage() {
           const cacheKey = `${VOCABULARY_CACHE_PREFIX}${videoId}`;
           localStorage.setItem(cacheKey, JSON.stringify(updated));
 
-          console.log('[前端] 字幕', index, '分析完成，難字數:', data.vocabulary.length, data.vocabulary);
+          console.log('[前端] ✅ 字幕', index, '分析完成，難字數:', data.vocabulary.length, data.vocabulary);
           return updated;
         });
       } else {
-        console.error('[前端] 分析失敗:', data.error);
+        console.error('[前端] ❌ 分析失敗:', data.error);
       }
     } catch (error) {
-      console.error('[前端] 分析請求失敗:', error);
+      console.error('[前端] ❌ 分析請求失敗:', error);
     } finally {
       analyzingRef.current.delete(index);
       setIsAnalyzing(false);
+      console.log('[前端] 🏁 分析結束，清除 analyzingRef 中的索引', index);
     }
   };
 
@@ -410,22 +412,32 @@ export default function SubtitlePage() {
     );
 
     if (newIndex !== currentSubtitleIndex) {
-      console.log('[前端] 字幕切換:', currentSubtitleIndex, '->', newIndex);
+      console.log('[前端] 🔄 字幕切換:', currentSubtitleIndex, '->', newIndex);
       setCurrentSubtitleIndex(newIndex);
 
       // 當切換到新字幕時，觸發按需分析
       if (newIndex >= 0) {
-        analyzeSubtitle(newIndex, subtitles[newIndex].text);
+        // 再次檢查是否需要分析（防止重複呼叫）
+        const needsAnalysis = !analyzingRef.current.has(newIndex) &&
+                              vocabularyMap[newIndex] === undefined &&
+                              subtitles[newIndex].text.trim().length >= 10;
+
+        if (needsAnalysis) {
+          console.log('[前端] 🎯 觸發字幕分析:', newIndex);
+          analyzeSubtitle(newIndex, subtitles[newIndex].text);
+        } else {
+          console.log('[前端] ⏭️  跳過字幕', newIndex, '- 已分析或快取中');
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTime, subtitles, currentSubtitleIndex]);
+  }, [currentTime, subtitles]);
 
   // 根據當前字幕索引獲取對應的難字
   const getCurrentVocabulary = (): VocabularyItem[] => {
     if (currentSubtitleIndex >= 0 && vocabularyMap[currentSubtitleIndex]) {
       const vocab = vocabularyMap[currentSubtitleIndex];
-      console.log('[前端] 當前字幕', currentSubtitleIndex, '難字:', vocab);
+      // console.log('[前端] 📚 當前字幕', currentSubtitleIndex, '難字:', vocab);
       return vocab;
     }
     return [];
@@ -435,32 +447,28 @@ export default function SubtitlePage() {
 
   return (
     <main className="h-screen flex flex-col bg-neutral-950 relative">
-      {/* 調試信息顯示區（右上角） */}
-      <div className="absolute top-6 right-6 z-50 bg-neutral-900/80 backdrop-blur-sm px-4 py-3 rounded-xl border border-neutral-700 shadow-2xl text-xs font-mono">
-        <div className="space-y-1 text-neutral-400">
-          <div>VideoID: <span className="text-neutral-300">{videoId || '未設置'}</span></div>
-          <div>字幕數: <span className="text-neutral-300">{subtitles.length}</span></div>
-          <div>當前索引: <span className="text-neutral-300">{currentSubtitleIndex}</span></div>
-          <div>快取條目: <span className="text-neutral-300">{Object.keys(vocabularyMap).length}</span></div>
-          <div>當前難字: <span className="text-neutral-300">{currentVocabulary.length}</span></div>
-          <div>正在分析: <span className={isAnalyzing ? 'text-yellow-400' : 'text-green-400'}>{isAnalyzing ? '是' : '否'}</span></div>
+      {/* 左下角狀態面板 - 不擋畫面 */}
+      <div className="absolute bottom-24 left-6 z-[9998] bg-neutral-900/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-neutral-700 text-xs font-mono">
+        <div className="flex items-center gap-4 text-neutral-400">
+          <div>字幕: <span className="text-neutral-200">{currentSubtitleIndex + 1}/{subtitles.length}</span></div>
+          <div>快取: <span className="text-neutral-200">{Object.keys(vocabularyMap).length}</span></div>
+          <div>難字: <span className={currentVocabulary.length > 0 ? 'text-green-400' : 'text-neutral-500'}>{currentVocabulary.length}</span></div>
+          {isAnalyzing && <div className="text-yellow-400">⏳ 分析中</div>}
         </div>
       </div>
 
-      {/* 分析進度提示 */}
-      {isAnalyzing && (
-        <div className="absolute top-6 left-6 z-50 bg-blue-900/90 backdrop-blur-sm px-5 py-3 rounded-xl border border-blue-700 shadow-2xl">
-          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-sm text-blue-100">AI 分析難字中...</span>
-          </div>
+      {/* 左上角：難字顯示區 - 總是顯示 */}
+      <div className="absolute top-6 left-6 z-[9999] bg-neutral-900/95 backdrop-blur-sm px-5 py-4 rounded-xl border border-neutral-700 shadow-2xl min-w-[200px]">
+        <div className="mb-2 text-xs text-neutral-500">
+          字幕 #{currentSubtitleIndex >= 0 ? currentSubtitleIndex + 1 : '-'}
         </div>
-      )}
 
-      {/* 講義模式：難字顯示區 */}
-      {!isAnalyzing && currentVocabulary.length > 0 && (
-        <div className="absolute top-28 left-6 z-50 bg-neutral-900/95 backdrop-blur-sm px-5 py-4 rounded-xl border border-neutral-700 shadow-2xl">
-          <div className="mb-2 text-xs text-neutral-500">字幕 #{currentSubtitleIndex} 的難字：</div>
+        {isAnalyzing ? (
+          <div className="flex items-center gap-2 text-blue-400">
+            <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-sm">分析中...</span>
+          </div>
+        ) : currentVocabulary.length > 0 ? (
           <div className="space-y-2">
             {currentVocabulary.map((item, index) => (
               <div key={index} className="flex items-baseline gap-2">
@@ -470,8 +478,12 @@ export default function SubtitlePage() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : currentSubtitleIndex >= 0 ? (
+          <div className="text-sm text-neutral-500">本句無難字</div>
+        ) : (
+          <div className="text-sm text-neutral-600">等待播放...</div>
+        )}
+      </div>
 
       {/* Full-screen subtitle panel */}
       <div className="flex-1 flex flex-col">
