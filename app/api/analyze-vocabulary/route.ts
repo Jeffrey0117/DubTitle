@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 跳過空白或過短的句子
-    if (text.trim().length < 10) {
+    if (text.trim().length < 5) {
       console.log('[API] ⏭️  句子太短，跳過分析');
       return NextResponse.json({
         success: true,

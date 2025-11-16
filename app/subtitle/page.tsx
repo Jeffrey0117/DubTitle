@@ -38,6 +38,7 @@ const VOCABULARY_CACHE_PREFIX = 'dubtitle_vocab_';
 export default function SubtitlePage() {
   const [videoId, setVideoId] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<number>(0);
+  const [playerConnected, setPlayerConnected] = useState<boolean>(false);
   const [bgColor, setBgColor] = useState<string>('#000000');
   const [textColor, setTextColor] = useState<string>('#ffffff');
   const [fontSize, setFontSize] = useState<number>(60);
@@ -51,11 +52,11 @@ export default function SubtitlePage() {
   const [error, setError] = useState<string>('');
   const [timingConfig, setTimingConfig] = useState<TimingConfig>(DEFAULT_TIMING);
   const [vocabularyMap, setVocabularyMap] = useState<VocabularyMap>({});
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analyzingIndexes, setAnalyzingIndexes] = useState<Set<number>>(new Set()); // 追蹤正在分析的字幕索引
   const [analysisProgress, setAnalysisProgress] = useState<string>('');
   const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState<number>(-1);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
-  const analyzingRef = useRef<Set<number>>(new Set()); // 追蹤正在分析的字幕索引
+  const analyzingRef = useRef<Set<number>>(new Set()); // 追蹤正在分析的字幕索引（用於避免重複請求）
 
   // Initialize BroadcastChannel for listening to real-time updates
   useEffect(() => {
@@ -77,6 +78,7 @@ export default function SubtitlePage() {
           case 'TIME_UPDATED':
             if (typeof data?.currentTime === 'number') {
               setCurrentTime(data.currentTime);
+              setPlayerConnected(true);
             }
             break;
 
@@ -182,6 +184,9 @@ export default function SubtitlePage() {
     setError('');
     setLoading(true);
     setSubtitles([]);
+    setVocabularyMap({}); // 清空舊影片的難字資料
+    setCurrentSubtitleIndex(-1); // 重置字幕索引
+    analyzingRef.current.clear(); // 清空分析中的記錄
 
     try {
       const response = await fetch('/api/subtitles', {
@@ -192,11 +197,19 @@ export default function SubtitlePage() {
         body: JSON.stringify({ videoId: id }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to load subtitles');
+        // 嘗試解析錯誤訊息
+        let errorMsg = '無法載入字幕';
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch {
+          errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMsg);
       }
+
+      const data = await response.json();
 
       const loadedSubtitles = data.subtitles || [];
       setSubtitles(loadedSubtitles);
@@ -234,7 +247,7 @@ export default function SubtitlePage() {
 
   // 按需分析單句字幕
   const analyzeSubtitle = async (index: number, text: string) => {
-    if (!videoId || !text || text.trim().length < 10) {
+    if (!videoId || !text || text.trim().length < 5) {
       console.log('[前端] 跳過分析 - videoId:', videoId, 'text長度:', text?.length);
       return;
     }
@@ -253,7 +266,8 @@ export default function SubtitlePage() {
 
     console.log('[前端] 🚀 開始分析字幕', index, ':', text.substring(0, 50));
     analyzingRef.current.add(index);
-    setIsAnalyzing(true);
+    // 將當前索引加入分析中的集合
+    setAnalyzingIndexes(prev => new Set([...prev, index]));
 
     try {
       const response = await fetch('/api/analyze-vocabulary', {
@@ -283,12 +297,21 @@ export default function SubtitlePage() {
         });
       } else {
         console.error('[前端] ❌ 分析失敗:', data.error);
+        // 即使失敗也要在 vocabularyMap 中記錄為空數組，避免重複嘗試
+        setVocabularyMap(prev => ({ ...prev, [index]: [] }));
       }
     } catch (error) {
       console.error('[前端] ❌ 分析請求失敗:', error);
+      // 失敗時也記錄為空數組
+      setVocabularyMap(prev => ({ ...prev, [index]: [] }));
     } finally {
       analyzingRef.current.delete(index);
-      setIsAnalyzing(false);
+      // 從分析中的集合移除當前索引
+      setAnalyzingIndexes(prev => {
+        const updated = new Set(prev);
+        updated.delete(index);
+        return updated;
+      });
       console.log('[前端] 🏁 分析結束，清除 analyzingRef 中的索引', index);
     }
   };
@@ -407,55 +430,218 @@ export default function SubtitlePage() {
       return;
     }
 
+    // 應用時間校準來找到當前字幕索引
+    const calibratedTime = currentTime + timingConfig.offset;
+    console.log('[前端] ⏰ 當前時間:', currentTime.toFixed(2), '校準後:', calibratedTime.toFixed(2), '偏移:', timingConfig.offset);
+
     const newIndex = subtitles.findIndex(
-      (sub) => currentTime >= sub.start && currentTime <= sub.end
+      (sub) => calibratedTime >= sub.start && calibratedTime <= sub.end
     );
 
+    if (newIndex === -1 && subtitles.length > 0) {
+      // 找不到字幕，印出前 3 個字幕的時間範圍供調試
+      console.log('[前端] ❌ 找不到字幕，前3個字幕時間:', subtitles.slice(0, 3).map(s => `${s.start.toFixed(2)}-${s.end.toFixed(2)}`));
+    }
+
     if (newIndex !== currentSubtitleIndex) {
-      console.log('[前端] 🔄 字幕切換:', currentSubtitleIndex, '->', newIndex);
+      console.log('[前端] 🔄 字幕切換:', currentSubtitleIndex, '->', newIndex, '(校準後時間:', calibratedTime.toFixed(2), ')');
       setCurrentSubtitleIndex(newIndex);
 
       // 當切換到新字幕時，觸發按需分析
       if (newIndex >= 0) {
+        const text = subtitles[newIndex]?.text || '';
+        const alreadyAnalyzing = analyzingRef.current.has(newIndex);
+        const hasCached = vocabularyMap[newIndex] !== undefined;
+        const textLongEnough = text.trim().length >= 5;
+
+        console.log('[前端] 🔍 檢查字幕', newIndex, ':', {
+          text: text.substring(0, 30),
+          alreadyAnalyzing,
+          hasCached,
+          textLongEnough,
+          vocabularyMapKeys: Object.keys(vocabularyMap)
+        });
+
         // 再次檢查是否需要分析（防止重複呼叫）
-        const needsAnalysis = !analyzingRef.current.has(newIndex) &&
-                              vocabularyMap[newIndex] === undefined &&
-                              subtitles[newIndex].text.trim().length >= 10;
+        const needsAnalysis = !alreadyAnalyzing && !hasCached && textLongEnough;
 
         if (needsAnalysis) {
-          console.log('[前端] 🎯 觸發字幕分析:', newIndex);
-          analyzeSubtitle(newIndex, subtitles[newIndex].text);
+          console.log('[前端] 🎯 觸發字幕分析:', newIndex, text);
+          analyzeSubtitle(newIndex, text);
         } else {
-          console.log('[前端] ⏭️  跳過字幕', newIndex, '- 已分析或快取中');
+          console.log('[前端] ⏭️  跳過字幕', newIndex, '- 原因:', {
+            alreadyAnalyzing,
+            hasCached,
+            textLongEnough
+          });
         }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTime, subtitles]);
+  }, [currentTime, subtitles, timingConfig]);
 
   // 根據當前字幕索引獲取對應的難字
   const getCurrentVocabulary = (): VocabularyItem[] => {
     if (currentSubtitleIndex >= 0 && vocabularyMap[currentSubtitleIndex]) {
       const vocab = vocabularyMap[currentSubtitleIndex];
-      // console.log('[前端] 📚 當前字幕', currentSubtitleIndex, '難字:', vocab);
+      console.log('[前端] 📚 當前字幕', currentSubtitleIndex, '難字:', vocab);
       return vocab;
     }
+    console.log('[前端] 📚 當前字幕', currentSubtitleIndex, '無難字或未分析');
     return [];
   };
 
   const currentVocabulary = getCurrentVocabulary();
+  const isCurrentSubtitleAnalyzing = currentSubtitleIndex >= 0 && analyzingIndexes.has(currentSubtitleIndex);
+
+  // 獲取當前字幕的分析狀態
+  const getCurrentAnalysisStatus = (): 'not_analyzed' | 'analyzing' | 'analyzed_with_words' | 'analyzed_no_words' => {
+    if (currentSubtitleIndex < 0) return 'not_analyzed';
+
+    if (analyzingRef.current.has(currentSubtitleIndex) || analyzingIndexes.has(currentSubtitleIndex)) {
+      return 'analyzing';
+    }
+
+    if (vocabularyMap[currentSubtitleIndex] !== undefined) {
+      return vocabularyMap[currentSubtitleIndex].length > 0 ? 'analyzed_with_words' : 'analyzed_no_words';
+    }
+
+    return 'not_analyzed';
+  };
+
+  // 獲取最近分析的5個字幕
+  const getRecentAnalyzed = () => {
+    const analyzed = Object.keys(vocabularyMap)
+      .map(key => parseInt(key))
+      .sort((a, b) => b - a)
+      .slice(0, 5);
+
+    return analyzed.map(index => ({
+      index,
+      text: subtitles[index]?.text || '',
+      vocabulary: vocabularyMap[index] || []
+    }));
+  };
+
+  const currentAnalysisStatus = getCurrentAnalysisStatus();
+  const recentAnalyzed = getRecentAnalyzed();
 
   return (
     <main className="h-screen flex flex-col bg-neutral-950 relative">
       {/* 左下角狀態面板 - 不擋畫面 */}
       <div className="absolute bottom-24 left-6 z-[9998] bg-neutral-900/90 backdrop-blur-sm px-4 py-2 rounded-lg border border-neutral-700 text-xs font-mono">
         <div className="flex items-center gap-4 text-neutral-400">
-          <div>字幕: <span className="text-neutral-200">{currentSubtitleIndex + 1}/{subtitles.length}</span></div>
+          <div>字幕: <span className="text-neutral-200">{currentSubtitleIndex >= 0 ? `${currentSubtitleIndex + 1}/${subtitles.length}` : `-/${subtitles.length}`}</span></div>
           <div>快取: <span className="text-neutral-200">{Object.keys(vocabularyMap).length}</span></div>
           <div>難字: <span className={currentVocabulary.length > 0 ? 'text-green-400' : 'text-neutral-500'}>{currentVocabulary.length}</span></div>
-          {isAnalyzing && <div className="text-yellow-400">⏳ 分析中</div>}
+          {isCurrentSubtitleAnalyzing && <div className="text-yellow-400">⏳ 分析中</div>}
+          {!playerConnected && subtitles.length > 0 && <div className="text-red-400">⚠️ 未連接 Player</div>}
         </div>
       </div>
+
+      {/* 右下角詳細調試面板 - 只在有字幕時顯示 */}
+      {currentSubtitleIndex >= 0 && subtitles[currentSubtitleIndex] && (
+        <div className="absolute bottom-24 right-6 z-[9998] bg-neutral-900/95 backdrop-blur-sm px-3 py-2.5 rounded-lg border border-neutral-700 text-[10px] font-mono max-w-md">
+          <div className="space-y-2">
+            {/* 標題 */}
+            <div className="text-neutral-500 font-semibold border-b border-neutral-700 pb-1 mb-2">
+              調試面板 - 字幕 #{currentSubtitleIndex + 1}
+            </div>
+
+            {/* 當前字幕文本 */}
+            <div>
+              <div className="text-neutral-500 mb-0.5">📝 當前字幕:</div>
+              <div className="text-neutral-200 bg-neutral-800/50 px-2 py-1 rounded text-[9px] leading-relaxed max-h-12 overflow-y-auto">
+                {subtitles[currentSubtitleIndex].text}
+              </div>
+            </div>
+
+            {/* 分析狀態 */}
+            <div>
+              <div className="text-neutral-500 mb-0.5">🔍 分析狀態:</div>
+              <div className="flex items-center gap-2">
+                {currentAnalysisStatus === 'not_analyzed' && (
+                  <span className="text-neutral-400 bg-neutral-800/50 px-2 py-0.5 rounded">⏸️ 未分析</span>
+                )}
+                {currentAnalysisStatus === 'analyzing' && (
+                  <span className="text-yellow-400 bg-yellow-950/30 px-2 py-0.5 rounded animate-pulse">⏳ 分析中...</span>
+                )}
+                {currentAnalysisStatus === 'analyzed_with_words' && (
+                  <span className="text-green-400 bg-green-950/30 px-2 py-0.5 rounded">✅ 已分析 ({currentVocabulary.length} 個難字)</span>
+                )}
+                {currentAnalysisStatus === 'analyzed_no_words' && (
+                  <span className="text-blue-400 bg-blue-950/30 px-2 py-0.5 rounded">✅ 已分析 (無難字)</span>
+                )}
+              </div>
+            </div>
+
+            {/* 難字分析結果 */}
+            <div>
+              <div className="text-neutral-500 mb-0.5">📚 難字分析:</div>
+              {currentAnalysisStatus === 'not_analyzed' && (
+                <div className="text-neutral-500 bg-neutral-800/30 px-2 py-1 rounded text-[9px] italic">
+                  等待分析...
+                </div>
+              )}
+              {currentAnalysisStatus === 'analyzing' && (
+                <div className="text-yellow-400 bg-neutral-800/30 px-2 py-1 rounded text-[9px] italic">
+                  正在分析中，請稍候...
+                </div>
+              )}
+              {currentAnalysisStatus === 'analyzed_no_words' && (
+                <div className="text-blue-400 bg-neutral-800/30 px-2 py-1 rounded text-[9px] italic">
+                  此字幕沒有難字
+                </div>
+              )}
+              {currentAnalysisStatus === 'analyzed_with_words' && (
+                <div className="bg-neutral-800/50 px-2 py-1 rounded text-[9px] space-y-0.5 max-h-24 overflow-y-auto">
+                  {currentVocabulary.map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-1.5">
+                      <span className="text-green-400 font-semibold min-w-[3em]">{item.word}</span>
+                      <span className="text-neutral-400">→</span>
+                      <span className="text-neutral-300">{item.translation}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 最近分析的5個字幕 */}
+            {recentAnalyzed.length > 0 && (
+              <div>
+                <div className="text-neutral-500 mb-0.5 border-t border-neutral-700 pt-2 mt-2">
+                  📊 最近分析 (前5條):
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {recentAnalyzed.map((item) => (
+                    <div
+                      key={item.index}
+                      className={`bg-neutral-800/30 px-2 py-1 rounded text-[9px] ${item.index === currentSubtitleIndex ? 'border border-blue-500/50' : ''}`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-neutral-500">#{item.index + 1}</span>
+                        {item.vocabulary.length > 0 ? (
+                          <span className="text-green-400 text-[8px]">✓ {item.vocabulary.length} 個難字</span>
+                        ) : (
+                          <span className="text-blue-400 text-[8px]">✓ 無難字</span>
+                        )}
+                      </div>
+                      <div className="text-neutral-400 truncate text-[8px]">
+                        {item.text.substring(0, 40)}{item.text.length > 40 ? '...' : ''}
+                      </div>
+                      {item.vocabulary.length > 0 && (
+                        <div className="text-green-400 mt-0.5 text-[8px]">
+                          {item.vocabulary.map(v => v.word).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Full-screen subtitle panel */}
       <div className="flex-1 flex flex-col">
@@ -477,7 +663,7 @@ export default function SubtitlePage() {
             highlighterPaddingY={highlighterPaddingY}
             currentSubtitleIndex={currentSubtitleIndex}
             currentVocabulary={currentVocabulary}
-            isAnalyzing={isAnalyzing}
+            isAnalyzing={isCurrentSubtitleAnalyzing}
           />
         </div>
 

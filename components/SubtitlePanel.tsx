@@ -85,6 +85,17 @@ export default function SubtitlePanel({
     setCurrentSubtitle(subtitle);
   }, [currentTime, subtitles, timingConfig]);
 
+  // Debug: Log when vocabulary or analyzing status changes
+  useEffect(() => {
+    console.log('[SubtitlePanel] 難字面板狀態:', {
+      currentSubtitleIndex,
+      isAnalyzing,
+      vocabularyCount: currentVocabulary.length,
+      shouldShow: isAnalyzing || currentVocabulary.length > 0,
+      vocabulary: currentVocabulary
+    });
+  }, [currentSubtitleIndex, isAnalyzing, currentVocabulary]);
+
   // 顯示內容優先級：錯誤 > 加載中 > 字幕內容 > 默認提示
   let displayText = '';
   let displayColor = textColor;
@@ -115,43 +126,42 @@ export default function SubtitlePanel({
         position: 'relative'
       } : {}}
     >
-      {/* 左上角：難字顯示區 - 在全螢幕元素內部，確保全螢幕時可見 */}
-      <div
-        className="absolute px-5 py-4 rounded-xl border shadow-2xl min-w-[200px]"
-        style={{
-          top: '24px',
-          left: '24px',
-          zIndex: 9999,
-          backgroundColor: 'rgba(23, 23, 23, 0.98)',
-          borderColor: '#404040',
-          backdropFilter: 'blur(8px)'
-        }}
-      >
-        <div className="mb-2 text-xs text-neutral-500">
-          字幕 #{currentSubtitleIndex >= 0 ? currentSubtitleIndex + 1 : '-'}
-        </div>
+      {/* 左上角：難字顯示區 - 只在分析中或有難字時顯示 */}
+      {(isAnalyzing || currentVocabulary.length > 0) && (
+        <div
+          className="absolute px-6 py-5 rounded-xl border shadow-2xl"
+          style={{
+            top: '24px',
+            left: '24px',
+            zIndex: 9999,
+            backgroundColor: 'rgba(23, 23, 23, 0.98)',
+            borderColor: '#404040',
+            backdropFilter: 'blur(8px)',
+            minWidth: '240px'
+          }}
+        >
+          <div className="mb-3 text-xs text-neutral-500">
+            字幕 #{currentSubtitleIndex >= 0 ? currentSubtitleIndex + 1 : '-'}
+          </div>
 
-        {isAnalyzing ? (
-          <div className="flex items-center gap-2 text-blue-400">
-            <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-sm">分析中...</span>
-          </div>
-        ) : currentVocabulary.length > 0 ? (
-          <div className="space-y-2">
-            {currentVocabulary.map((item, index) => (
-              <div key={index} className="flex items-baseline gap-2">
-                <span className="text-sm font-medium text-blue-400">{item.word}</span>
-                <span className="text-xs text-neutral-500">:</span>
-                <span className="text-sm text-neutral-300">{item.translation}</span>
-              </div>
-            ))}
-          </div>
-        ) : currentSubtitleIndex >= 0 ? (
-          <div className="text-sm text-neutral-500">本句無難字</div>
-        ) : (
-          <div className="text-sm text-neutral-600">等待播放...</div>
-        )}
-      </div>
+          {isAnalyzing ? (
+            <div className="flex items-center gap-2 text-blue-400">
+              <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-base">分析中...</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {currentVocabulary.map((item, index) => (
+                <div key={index} className="flex items-baseline gap-3">
+                  <span className="text-lg font-semibold text-blue-400">{item.word}</span>
+                  <span className="text-sm text-neutral-500">:</span>
+                  <span className="text-base text-neutral-200">{item.translation}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 全屏按鈕 */}
       <button
