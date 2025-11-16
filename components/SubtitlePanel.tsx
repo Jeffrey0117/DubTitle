@@ -31,6 +31,7 @@ interface SubtitlePanelProps {
   currentSubtitleIndex?: number;
   currentVocabulary?: VocabularyItem[];
   isAnalyzing?: boolean;
+  vocabularyFontSize?: number;
 }
 
 export default function SubtitlePanel({
@@ -49,7 +50,8 @@ export default function SubtitlePanel({
   highlighterPaddingY = 0,
   currentSubtitleIndex = -1,
   currentVocabulary = [],
-  isAnalyzing = false
+  isAnalyzing = false,
+  vocabularyFontSize = 24
 }: SubtitlePanelProps) {
   const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -150,12 +152,27 @@ export default function SubtitlePanel({
               <span className="text-base">分析中...</span>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {currentVocabulary.map((item, index) => (
-                <div key={index} className="flex items-baseline gap-3">
-                  <span className="text-lg font-semibold text-blue-400">{item.word}</span>
-                  <span className="text-sm text-neutral-500">:</span>
-                  <span className="text-base text-neutral-200">{item.translation}</span>
+                <div key={index} className="flex items-baseline gap-4">
+                  <span
+                    className="font-bold text-blue-400"
+                    style={{ fontSize: `${vocabularyFontSize}px` }}
+                  >
+                    {item.word}
+                  </span>
+                  <span
+                    className="text-neutral-500"
+                    style={{ fontSize: `${vocabularyFontSize * 0.75}px` }}
+                  >
+                    :
+                  </span>
+                  <span
+                    className="text-neutral-200"
+                    style={{ fontSize: `${vocabularyFontSize * 0.83}px` }}
+                  >
+                    {item.translation}
+                  </span>
                 </div>
               ))}
             </div>

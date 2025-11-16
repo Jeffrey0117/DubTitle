@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import SubtitlePanel from '@/components/SubtitlePanel';
 import StyleControl from '@/components/StyleControl';
 import TextStyleControl from '@/components/TextStyleControl';
-import { TimingConfig, DEFAULT_TIMING, deserializeTimingConfig, serializeTimingConfig } from '@/lib/timingUtils';
+import { TimingConfig, DEFAULT_TIMING, deserializeTimingConfig, serializeTimingConfig, isSubtitleVisible, findSubtitleAtTime } from '@/lib/timingUtils';
 
 interface Subtitle {
   start: number;
@@ -47,6 +47,8 @@ export default function SubtitlePage() {
   const [highlighterColor, setHighlighterColor] = useState<string>('transparent');
   const [highlighterPaddingX, setHighlighterPaddingX] = useState<number>(0);
   const [highlighterPaddingY, setHighlighterPaddingY] = useState<number>(0);
+  const [vocabularyOffset, setVocabularyOffset] = useState<number>(0); // 難字偏移（秒），0 = 完全同步
+  const [vocabularyFontSize, setVocabularyFontSize] = useState<number>(24); // 難字字體大小（px）
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -142,6 +144,24 @@ export default function SubtitlePage() {
         if (typeof style.highlighterPaddingY === 'number') setHighlighterPaddingY(style.highlighterPaddingY);
       } catch (err) {
         console.warn('Failed to parse text style from localStorage:', err);
+      }
+    }
+
+    // Load vocabulary offset from localStorage
+    const storedVocabOffset = localStorage.getItem('dubtitle_vocabulary_offset');
+    if (storedVocabOffset) {
+      const offset = parseFloat(storedVocabOffset);
+      if (!isNaN(offset)) {
+        setVocabularyOffset(offset);
+      }
+    }
+
+    // Load vocabulary font size from localStorage
+    const storedVocabFontSize = localStorage.getItem('dubtitle_vocabulary_font_size');
+    if (storedVocabFontSize) {
+      const size = parseFloat(storedVocabFontSize);
+      if (!isNaN(size) && size >= 12 && size <= 48) {
+        setVocabularyFontSize(size);
       }
     }
   }, []);
@@ -423,6 +443,18 @@ export default function SubtitlePage() {
     broadcastTextStyleChange(undefined, undefined, undefined, undefined, value);
   };
 
+  const handleVocabularyOffsetChange = (value: number) => {
+    setVocabularyOffset(value);
+    // 儲存到 localStorage 以便持久化
+    localStorage.setItem('dubtitle_vocabulary_offset', value.toString());
+  };
+
+  const handleVocabularyFontSizeChange = (value: number) => {
+    setVocabularyFontSize(value);
+    // 儲存到 localStorage 以便持久化
+    localStorage.setItem('dubtitle_vocabulary_font_size', value.toString());
+  };
+
   // 監聽當前時間變化，更新當前字幕索引並觸發按需分析
   useEffect(() => {
     if (subtitles.length === 0) {
@@ -430,21 +462,19 @@ export default function SubtitlePage() {
       return;
     }
 
-    // 應用時間校準來找到當前字幕索引
-    const calibratedTime = currentTime + timingConfig.offset;
-    console.log('[前端] ⏰ 當前時間:', currentTime.toFixed(2), '校準後:', calibratedTime.toFixed(2), '偏移:', timingConfig.offset);
-
-    const newIndex = subtitles.findIndex(
-      (sub) => calibratedTime >= sub.start && calibratedTime <= sub.end
+    // 應用時間校準來找到當前字幕索引（使用和 SubtitlePanel 相同的邏輯）
+    const newIndex = subtitles.findIndex((sub) =>
+      isSubtitleVisible(sub, currentTime, timingConfig)
     );
 
     if (newIndex === -1 && subtitles.length > 0) {
       // 找不到字幕，印出前 3 個字幕的時間範圍供調試
-      console.log('[前端] ❌ 找不到字幕，前3個字幕時間:', subtitles.slice(0, 3).map(s => `${s.start.toFixed(2)}-${s.end.toFixed(2)}`));
+      console.log('[前端] ❌ 找不到字幕，當前時間:', currentTime.toFixed(2), '偏移:', timingConfig.offset);
+      console.log('[前端] 前3個字幕時間:', subtitles.slice(0, 3).map(s => `${s.start.toFixed(2)}-${s.end.toFixed(2)}`));
     }
 
     if (newIndex !== currentSubtitleIndex) {
-      console.log('[前端] 🔄 字幕切換:', currentSubtitleIndex, '->', newIndex, '(校準後時間:', calibratedTime.toFixed(2), ')');
+      console.log('[前端] 🔄 字幕切換:', currentSubtitleIndex, '->', newIndex, '(當前時間:', currentTime.toFixed(2), ')');
       setCurrentSubtitleIndex(newIndex);
 
       // 當切換到新字幕時，觸發按需分析
@@ -475,35 +505,77 @@ export default function SubtitlePage() {
             textLongEnough
           });
         }
+
+        // 提前分析下 1-8 個字幕（激進預測性分析）
+        for (let i = 1; i <= 8; i++) {
+          const nextIndex = newIndex + i;
+          if (nextIndex < subtitles.length) {
+            const nextText = subtitles[nextIndex]?.text || '';
+            const nextAlreadyAnalyzing = analyzingRef.current.has(nextIndex);
+            const nextHasCached = vocabularyMap[nextIndex] !== undefined;
+            const nextTextLongEnough = nextText.trim().length >= 5;
+
+            if (!nextAlreadyAnalyzing && !nextHasCached && nextTextLongEnough) {
+              console.log('[前端] 🔮 預測性分析下個字幕:', nextIndex);
+              analyzeSubtitle(nextIndex, nextText);
+            }
+          }
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, subtitles, timingConfig]);
 
-  // 根據當前字幕索引獲取對應的難字
+  // 根據當前字幕索引獲取對應的難字（使用提前偏移）
   const getCurrentVocabulary = (): VocabularyItem[] => {
-    if (currentSubtitleIndex >= 0 && vocabularyMap[currentSubtitleIndex]) {
-      const vocab = vocabularyMap[currentSubtitleIndex];
-      console.log('[前端] 📚 當前字幕', currentSubtitleIndex, '難字:', vocab);
+    // 創建難字專用的 timing config，加上額外的 vocabularyOffset
+    const vocabularyTimingConfig: TimingConfig = {
+      ...timingConfig,
+      offset: timingConfig.offset + vocabularyOffset
+    };
+
+    // 根據提前的時間找到應該顯示難字的字幕索引
+    const vocabularyIndex = subtitles.findIndex((sub) =>
+      isSubtitleVisible(sub, currentTime, vocabularyTimingConfig)
+    );
+
+    if (vocabularyIndex >= 0 && vocabularyMap[vocabularyIndex]) {
+      const vocab = vocabularyMap[vocabularyIndex];
+      console.log('[前端] 📚 難字索引', vocabularyIndex, '(當前字幕:', currentSubtitleIndex, ') 難字:', vocab);
       return vocab;
     }
-    console.log('[前端] 📚 當前字幕', currentSubtitleIndex, '無難字或未分析');
+    console.log('[前端] 📚 難字索引', vocabularyIndex, '(當前字幕:', currentSubtitleIndex, ') 無難字或未分析');
     return [];
   };
 
   const currentVocabulary = getCurrentVocabulary();
-  const isCurrentSubtitleAnalyzing = currentSubtitleIndex >= 0 && analyzingIndexes.has(currentSubtitleIndex);
 
-  // 獲取當前字幕的分析狀態
+  // 判斷難字對應的字幕是否正在分析
+  const getVocabularySubtitleIndex = (): number => {
+    // 創建難字專用的 timing config，加上額外的 vocabularyOffset
+    const vocabularyTimingConfig: TimingConfig = {
+      ...timingConfig,
+      offset: timingConfig.offset + vocabularyOffset
+    };
+
+    return subtitles.findIndex((sub) =>
+      isSubtitleVisible(sub, currentTime, vocabularyTimingConfig)
+    );
+  };
+
+  const vocabularySubtitleIndex = getVocabularySubtitleIndex();
+  const isCurrentSubtitleAnalyzing = vocabularySubtitleIndex >= 0 && analyzingIndexes.has(vocabularySubtitleIndex);
+
+  // 獲取當前字幕的分析狀態（基於難字顯示的索引）
   const getCurrentAnalysisStatus = (): 'not_analyzed' | 'analyzing' | 'analyzed_with_words' | 'analyzed_no_words' => {
-    if (currentSubtitleIndex < 0) return 'not_analyzed';
+    if (vocabularySubtitleIndex < 0) return 'not_analyzed';
 
-    if (analyzingRef.current.has(currentSubtitleIndex) || analyzingIndexes.has(currentSubtitleIndex)) {
+    if (analyzingRef.current.has(vocabularySubtitleIndex) || analyzingIndexes.has(vocabularySubtitleIndex)) {
       return 'analyzing';
     }
 
-    if (vocabularyMap[currentSubtitleIndex] !== undefined) {
-      return vocabularyMap[currentSubtitleIndex].length > 0 ? 'analyzed_with_words' : 'analyzed_no_words';
+    if (vocabularyMap[vocabularySubtitleIndex] !== undefined) {
+      return vocabularyMap[vocabularySubtitleIndex].length > 0 ? 'analyzed_with_words' : 'analyzed_no_words';
     }
 
     return 'not_analyzed';
@@ -540,20 +612,39 @@ export default function SubtitlePage() {
       </div>
 
       {/* 右下角詳細調試面板 - 只在有字幕時顯示 */}
-      {currentSubtitleIndex >= 0 && subtitles[currentSubtitleIndex] && (
+      {currentSubtitleIndex >= 0 && subtitles[currentSubtitleIndex] && (() => {
+        // 獲取 SubtitlePanel 實際顯示的字幕文本（確保同步）
+        const displayedSubtitleText = findSubtitleAtTime(subtitles, currentTime, timingConfig);
+        const vocabularyTimingConfig: TimingConfig = {
+          ...timingConfig,
+          offset: timingConfig.offset + vocabularyOffset
+        };
+        const vocabularySubtitleText = findSubtitleAtTime(subtitles, currentTime, vocabularyTimingConfig);
+
+        return (
         <div className="absolute bottom-24 right-6 z-[9998] bg-neutral-900/95 backdrop-blur-sm px-3 py-2.5 rounded-lg border border-neutral-700 text-[10px] font-mono max-w-md">
           <div className="space-y-2">
             {/* 標題 */}
             <div className="text-neutral-500 font-semibold border-b border-neutral-700 pb-1 mb-2">
-              調試面板 - 字幕 #{currentSubtitleIndex + 1}
+              調試面板 - 字幕 #{currentSubtitleIndex + 1} {vocabularySubtitleIndex !== currentSubtitleIndex && vocabularySubtitleIndex >= 0 && (
+                <span className="text-blue-400">(難字: #{vocabularySubtitleIndex + 1})</span>
+              )}
             </div>
 
             {/* 當前字幕文本 */}
             <div>
-              <div className="text-neutral-500 mb-0.5">📝 當前字幕:</div>
+              <div className="text-neutral-500 mb-0.5">📝 當前顯示字幕 (實際):</div>
               <div className="text-neutral-200 bg-neutral-800/50 px-2 py-1 rounded text-[9px] leading-relaxed max-h-12 overflow-y-auto">
-                {subtitles[currentSubtitleIndex].text}
+                {displayedSubtitleText || '(無字幕)'}
               </div>
+              {vocabularySubtitleText && vocabularySubtitleText !== displayedSubtitleText && (
+                <>
+                  <div className="text-blue-400 mb-0.5 mt-1">🔮 難字對應字幕 (提前 {Math.abs(vocabularyOffset).toFixed(1)}s):</div>
+                  <div className="text-blue-200 bg-blue-950/30 px-2 py-1 rounded text-[9px] leading-relaxed max-h-12 overflow-y-auto">
+                    {vocabularySubtitleText}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 分析狀態 */}
@@ -641,7 +732,8 @@ export default function SubtitlePage() {
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Full-screen subtitle panel */}
       <div className="flex-1 flex flex-col">
@@ -664,6 +756,7 @@ export default function SubtitlePage() {
             currentSubtitleIndex={currentSubtitleIndex}
             currentVocabulary={currentVocabulary}
             isAnalyzing={isCurrentSubtitleAnalyzing}
+            vocabularyFontSize={vocabularyFontSize}
           />
         </div>
 
@@ -689,6 +782,33 @@ export default function SubtitlePage() {
             onHighlighterPaddingXChange={handleHighlighterPaddingXChange}
             onHighlighterPaddingYChange={handleHighlighterPaddingYChange}
           />
+
+          {/* Vocabulary Font Size Control */}
+          <div className="p-4 bg-neutral-900 rounded-lg space-y-3">
+            <h3 className="text-sm font-medium text-neutral-300">難字字體大小</h3>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-neutral-400">字體大小</label>
+                <span className="text-sm font-mono text-blue-400">
+                  {vocabularyFontSize}px
+                </span>
+              </div>
+              <input
+                type="range"
+                min="12"
+                max="48"
+                step="2"
+                value={vocabularyFontSize}
+                onChange={(e) => handleVocabularyFontSizeChange(parseFloat(e.target.value))}
+                className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+              <div className="flex justify-between text-xs text-neutral-500">
+                <span>12px</span>
+                <span>24px</span>
+                <span>48px</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>
