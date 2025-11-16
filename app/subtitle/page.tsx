@@ -461,34 +461,6 @@ export default function SubtitlePage() {
       <div className="flex-1 flex flex-col">
         {/* Subtitle display area */}
         <div className="flex-1 flex items-center justify-center p-8 relative">
-          {/* 左上角：難字顯示區 - 總是顯示（在字幕顯示區域內，全螢幕時也會顯示） */}
-          <div className="absolute top-6 left-6 z-50 bg-neutral-900/95 backdrop-blur-sm px-5 py-4 rounded-xl border border-neutral-700 shadow-2xl min-w-[200px]">
-            <div className="mb-2 text-xs text-neutral-500">
-              字幕 #{currentSubtitleIndex >= 0 ? currentSubtitleIndex + 1 : '-'}
-            </div>
-
-            {isAnalyzing ? (
-              <div className="flex items-center gap-2 text-blue-400">
-                <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-sm">分析中...</span>
-              </div>
-            ) : currentVocabulary.length > 0 ? (
-              <div className="space-y-2">
-                {currentVocabulary.map((item, index) => (
-                  <div key={index} className="flex items-baseline gap-2">
-                    <span className="text-sm font-medium text-blue-400">{item.word}</span>
-                    <span className="text-xs text-neutral-500">:</span>
-                    <span className="text-sm text-neutral-300">{item.translation}</span>
-                  </div>
-                ))}
-              </div>
-            ) : currentSubtitleIndex >= 0 ? (
-              <div className="text-sm text-neutral-500">本句無難字</div>
-            ) : (
-              <div className="text-sm text-neutral-600">等待播放...</div>
-            )}
-          </div>
-
           <SubtitlePanel
             currentTime={currentTime}
             bgColor={bgColor}
@@ -503,6 +475,9 @@ export default function SubtitlePage() {
             highlighterColor={highlighterColor}
             highlighterPaddingX={highlighterPaddingX}
             highlighterPaddingY={highlighterPaddingY}
+            currentSubtitleIndex={currentSubtitleIndex}
+            currentVocabulary={currentVocabulary}
+            isAnalyzing={isAnalyzing}
           />
         </div>
 

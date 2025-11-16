@@ -9,6 +9,11 @@ interface Subtitle {
   text: string;
 }
 
+interface VocabularyItem {
+  word: string;
+  translation: string;
+}
+
 interface SubtitlePanelProps {
   currentTime: number;
   bgColor: string;
@@ -23,6 +28,9 @@ interface SubtitlePanelProps {
   highlighterColor?: string;
   highlighterPaddingX?: number;
   highlighterPaddingY?: number;
+  currentSubtitleIndex?: number;
+  currentVocabulary?: VocabularyItem[];
+  isAnalyzing?: boolean;
 }
 
 export default function SubtitlePanel({
@@ -38,7 +46,10 @@ export default function SubtitlePanel({
   textShadowStrength = 0,
   highlighterColor = 'transparent',
   highlighterPaddingX = 0,
-  highlighterPaddingY = 0
+  highlighterPaddingY = 0,
+  currentSubtitleIndex = -1,
+  currentVocabulary = [],
+  isAnalyzing = false
 }: SubtitlePanelProps) {
   const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -95,7 +106,53 @@ export default function SubtitlePanel({
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full relative">
+    <div
+      ref={containerRef}
+      className="w-full h-full relative"
+      style={isFullscreen ? {
+        width: '100vw',
+        height: '100vh',
+        position: 'relative'
+      } : {}}
+    >
+      {/* 左上角：難字顯示區 - 在全螢幕元素內部，確保全螢幕時可見 */}
+      <div
+        className="absolute px-5 py-4 rounded-xl border shadow-2xl min-w-[200px]"
+        style={{
+          top: '24px',
+          left: '24px',
+          zIndex: 9999,
+          backgroundColor: 'rgba(23, 23, 23, 0.98)',
+          borderColor: '#404040',
+          backdropFilter: 'blur(8px)'
+        }}
+      >
+        <div className="mb-2 text-xs text-neutral-500">
+          字幕 #{currentSubtitleIndex >= 0 ? currentSubtitleIndex + 1 : '-'}
+        </div>
+
+        {isAnalyzing ? (
+          <div className="flex items-center gap-2 text-blue-400">
+            <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-sm">分析中...</span>
+          </div>
+        ) : currentVocabulary.length > 0 ? (
+          <div className="space-y-2">
+            {currentVocabulary.map((item, index) => (
+              <div key={index} className="flex items-baseline gap-2">
+                <span className="text-sm font-medium text-blue-400">{item.word}</span>
+                <span className="text-xs text-neutral-500">:</span>
+                <span className="text-sm text-neutral-300">{item.translation}</span>
+              </div>
+            ))}
+          </div>
+        ) : currentSubtitleIndex >= 0 ? (
+          <div className="text-sm text-neutral-500">本句無難字</div>
+        ) : (
+          <div className="text-sm text-neutral-600">等待播放...</div>
+        )}
+      </div>
+
       {/* 全屏按鈕 */}
       <button
         onClick={toggleFullscreen}
