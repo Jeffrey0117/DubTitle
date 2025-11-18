@@ -10,6 +10,7 @@ export default function PlayerPage() {
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [timingConfig, setTimingConfig] = useState<TimingConfig>(DEFAULT_TIMING);
   const [subtitles, setSubtitles] = useState<Array<{ start: number; end: number; text: string }>>([]);
+  const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState<boolean>(false); // AI 難字分析開關，預設關閉
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const youtubePlayerRef = useRef<any>(null);
 
@@ -42,6 +43,12 @@ export default function PlayerPage() {
       if (savedTimingConfig) {
         const config = deserializeTimingConfig(savedTimingConfig);
         setTimingConfig(config);
+      }
+
+      // Load AI analysis enabled from localStorage
+      const storedAiAnalysis = localStorage.getItem('dubtitle_ai_analysis_enabled');
+      if (storedAiAnalysis !== null) {
+        setAiAnalysisEnabled(storedAiAnalysis === 'true');
       }
     }
   }, []);
@@ -271,6 +278,28 @@ export default function PlayerPage() {
             onTimingChange={handleTimingConfigChange}
             initialConfig={timingConfig}
           />
+
+          {/* AI Analysis Toggle */}
+          <div className="bg-neutral-900 rounded-xl p-6 border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-medium text-neutral-300">AI 難字分析</h3>
+                <p className="text-xs text-neutral-500 mt-1">開啟後會在字幕頁面自動分析難字（會消耗 API token）</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={aiAnalysisEnabled}
+                  onChange={(e) => {
+                    setAiAnalysisEnabled(e.target.checked);
+                    localStorage.setItem('dubtitle_ai_analysis_enabled', e.target.checked.toString());
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-neutral-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 

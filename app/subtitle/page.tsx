@@ -57,7 +57,7 @@ export default function SubtitlePage() {
   const [analyzingIndexes, setAnalyzingIndexes] = useState<Set<number>>(new Set()); // 追蹤正在分析的字幕索引
   const [analysisProgress, setAnalysisProgress] = useState<string>('');
   const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState<number>(-1);
-  const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState<boolean>(true); // AI 難字分析開關
+  const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState<boolean>(false); // AI 難字分析開關，預設關閉
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const analyzingRef = useRef<Set<number>>(new Set()); // 追蹤正在分析的字幕索引（用於避免重複請求）
 
@@ -921,31 +921,10 @@ export default function SubtitlePage() {
             onHighlighterPaddingYChange={handleHighlighterPaddingYChange}
           />
 
-          {/* AI Analysis Toggle & Vocabulary Font Size Control */}
-          <div className="p-4 bg-neutral-900 rounded-lg space-y-4">
-            {/* AI Analysis Toggle */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-medium text-neutral-300">AI 難字分析</h3>
-                <p className="text-xs text-neutral-500 mt-0.5">關閉後不會呼叫 API，節省資源</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={aiAnalysisEnabled}
-                  onChange={(e) => {
-                    setAiAnalysisEnabled(e.target.checked);
-                    localStorage.setItem('dubtitle_ai_analysis_enabled', e.target.checked.toString());
-                  }}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-neutral-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            {/* Vocabulary Font Size */}
-            <div className="space-y-2 border-t border-neutral-800 pt-4">
-              <h4 className="text-sm font-medium text-neutral-300">難字字體大小</h4>
+          {/* Vocabulary Font Size Control */}
+          <div className="p-4 bg-neutral-900 rounded-lg space-y-3">
+            <h3 className="text-sm font-medium text-neutral-300">難字字體大小</h3>
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm text-neutral-400">字體大小</label>
                 <span className="text-sm font-mono text-blue-400">
