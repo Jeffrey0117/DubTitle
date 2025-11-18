@@ -1,6 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+// Youglish Widget 類型聲明
+declare global {
+  interface Window {
+    YG: {
+      Widget: new (containerId: string, options: {
+        width?: number;
+        components?: number;
+        events?: {
+          onFetchDone?: (event: { totalResult: number }) => void;
+          onVideoChange?: (event: { trackNumber: number }) => void;
+          onCaptionConsumed?: () => void;
+        };
+      }) => {
+        fetch: (word: string, language: string) => void;
+        replay: () => void;
+        next: () => void;
+      };
+    };
+  }
+}
 
 // 資料結構定義
 export interface TeachableSlide {
@@ -10,6 +31,16 @@ export interface TeachableSlide {
   chinese: string;
   vocabulary: VocabularyItem[];
 }
+
+export interface YouglishSlide {
+  id: number;
+  type: 'youglish';
+  word: string;
+  translation: string;
+  sourceSlideId: number;
+}
+
+export type Slide = TeachableSlide | YouglishSlide;
 
 export interface VocabularyItem {
   word: string;
@@ -121,6 +152,187 @@ function ContentSlide({ slide }: { slide: TeachableSlide }) {
   );
 }
 
+/**
+ * Youglish 投影片組件 - 使用 Youglish Widget API 播放單字發音影片
+ */
+interface YouglishSlideProps {
+  slide: YouglishSlide;
+  onComplete: () => void;
+  autoPlay?: boolean;
+  replayCount?: number;
+}
+
+function YouglishSlideComponent({
+  slide,
+  onComplete,
+  autoPlay = true,
+  replayCount = 3
+}: YouglishSlideProps) {
+  const widgetRef = useRef<any>(null);
+  const viewsRef = useRef(0);
+  const [currentViews, setCurrentViews] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [noResults, setNoResults] = useState(false);
+  const containerId = `youglish-widget-${slide.id}`;
+
+  useEffect(() => {
+    let widget: any = null;
+    let isMounted = true;
+
+    const initWidget = () => {
+      if (!window.YG) {
+        // 等待 API 載入
+        setTimeout(initWidget, 100);
+        return;
+      }
+
+      if (!isMounted) return;
+
+      // 清空容器
+      const container = document.getElementById(containerId);
+      if (container) {
+        container.innerHTML = '';
+      }
+
+      widget = new window.YG.Widget(containerId, {
+        width: 640,
+        components: 9, // search box & caption
+        events: {
+          onFetchDone: (event: { totalResult: number }) => {
+            setIsLoading(false);
+            if (event.totalResult === 0) {
+              console.log(`[Youglish] No results for: ${slide.word}`);
+              setNoResults(true);
+              // 3 秒後自動跳過
+              setTimeout(() => {
+                if (isMounted) {
+                  onComplete();
+                }
+              }, 3000);
+            }
+          },
+          onCaptionConsumed: () => {
+            viewsRef.current++;
+            setCurrentViews(viewsRef.current);
+
+            if (viewsRef.current >= replayCount) {
+              if (autoPlay) {
+                onComplete();
+              }
+            } else {
+              widget.replay();
+            }
+          }
+        }
+      });
+
+      widgetRef.current = widget;
+      widget.fetch(slide.word, 'english');
+    };
+
+    initWidget();
+
+    return () => {
+      isMounted = false;
+      // 清理
+      widgetRef.current = null;
+      viewsRef.current = 0;
+    };
+  }, [slide.word, slide.id, containerId, onComplete, autoPlay, replayCount]);
+
+  return (
+    <div className="youglish-slide bg-neutral-900 rounded-2xl shadow-2xl p-8 min-h-[600px] flex flex-col">
+      {/* 單字標題 */}
+      <div className="text-center mb-6">
+        <span className="text-4xl font-bold text-green-400">{slide.word}</span>
+        <span className="text-2xl text-neutral-400 ml-4">{slide.translation}</span>
+      </div>
+
+      {/* 載入中提示 */}
+      {isLoading && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-neutral-400">載入 Youglish...</p>
+          </div>
+        </div>
+      )}
+
+      {/* 無結果提示 */}
+      {noResults && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-neutral-400 mb-2">找不到「{slide.word}」的發音影片</p>
+            <p className="text-neutral-500 text-sm">3 秒後自動跳到下一張...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Widget 容器 */}
+      <div
+        id={containerId}
+        className={`mx-auto flex justify-center flex-1 ${isLoading || noResults ? 'hidden' : ''}`}
+      />
+
+      {/* 播放狀態 */}
+      {!isLoading && !noResults && (
+        <div className="mt-4 text-center text-neutral-500">
+          播放 {currentViews}/{replayCount} 次後自動跳到下一張
+        </div>
+      )}
+
+      {/* 跳過按鈕 */}
+      <div className="mt-4 flex justify-center">
+        <button
+          onClick={onComplete}
+          className="px-6 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-lg transition-colors"
+        >
+          跳過此單字
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * 建立投影片序列（含 Youglish 插入）
+ * 在每個有單字的 ContentSlide 後面插入 YouglishSlide
+ */
+function buildSlideSequence(contentSlides: TeachableSlide[]): Slide[] {
+  const sequence: Slide[] = [];
+  let youglishId = 10000;
+
+  for (const slide of contentSlides) {
+    // 加入內容投影片
+    sequence.push(slide);
+
+    // 如果有單字，加入 Youglish 投影片
+    if (slide.vocabulary && slide.vocabulary.length > 0) {
+      for (const vocab of slide.vocabulary) {
+        sequence.push({
+          id: youglishId++,
+          type: 'youglish',
+          word: vocab.word,
+          translation: vocab.translation,
+          sourceSlideId: slide.id
+        });
+      }
+    }
+  }
+
+  return sequence;
+}
+
+/**
+ * 取得投影片類型標籤
+ */
+function getSlideTypeLabel(slide: Slide): string {
+  if (slide.type === 'youglish') {
+    return `🔊 ${slide.word}`;
+  }
+  return `📝 第 ${slide.id} 頁`;
+}
 
 /**
  * 主頁面組件
@@ -128,10 +340,31 @@ function ContentSlide({ slide }: { slide: TeachableSlide }) {
 export default function TeachablePage() {
   const [videoId, setVideoId] = useState<string>('');
   const [slides, setSlides] = useState<TeachableSlide[]>([]);
+  const [slideSequence, setSlideSequence] = useState<Slide[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [fadeIn, setFadeIn] = useState(true);
+
+  // Youglish 控制狀態
+  const [youglishEnabled, setYouglishEnabled] = useState(true);
+  const [youglishReplayCount, setYouglishReplayCount] = useState(3);
+
+  // 載入 Youglish Script
+  useEffect(() => {
+    // 檢查是否已載入
+    if (document.getElementById('youglish-script')) return;
+
+    const script = document.createElement('script');
+    script.id = 'youglish-script';
+    script.src = 'https://youglish.com/public/emb/widget.js';
+    script.async = true;
+    document.body.appendChild(script);
+
+    return () => {
+      // 清理時不移除 script，因為可能其他組件還在使用
+    };
+  }, []);
 
   // 從 localStorage 自動載入 videoId
   useEffect(() => {
@@ -144,6 +377,19 @@ export default function TeachablePage() {
       setError('請先在播放器頁面載入影片');
     }
   }, []);
+
+  // 當 slides 或 youglishEnabled 改變時，更新投影片序列
+  useEffect(() => {
+    if (slides.length > 0) {
+      if (youglishEnabled) {
+        setSlideSequence(buildSlideSequence(slides));
+      } else {
+        setSlideSequence(slides);
+      }
+      // 重置索引以避免越界
+      setCurrentSlideIndex(0);
+    }
+  }, [slides, youglishEnabled]);
 
   // 鍵盤快捷鍵
   useEffect(() => {
@@ -163,12 +409,23 @@ export default function TeachablePage() {
       } else if (e.key === 'ArrowRight' || e.key === ' ') {
         e.preventDefault();
         goToNextSlide();
+      } else if (e.key === 's' || e.key === 'S') {
+        // 跳過當前 Youglish
+        e.preventDefault();
+        const current = slideSequence[currentSlideIndex];
+        if (current?.type === 'youglish') {
+          goToNextSlide();
+        }
+      } else if (e.key === 'y' || e.key === 'Y') {
+        // 切換 Youglish 開關
+        e.preventDefault();
+        setYouglishEnabled(!youglishEnabled);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentSlideIndex, slides.length, fadeIn]);
+  }, [currentSlideIndex, slideSequence, fadeIn, youglishEnabled]);
 
   const loadSlides = async (id: string) => {
     setIsLoading(true);
@@ -286,7 +543,7 @@ export default function TeachablePage() {
   };
 
   const goToNextSlide = () => {
-    if (currentSlideIndex < slides.length - 1) {
+    if (currentSlideIndex < slideSequence.length - 1) {
       setFadeIn(false);
       setTimeout(() => {
         setCurrentSlideIndex(currentSlideIndex + 1);
@@ -305,7 +562,25 @@ export default function TeachablePage() {
     }
   };
 
-  const currentSlide = slides[currentSlideIndex];
+  const currentSlide = slideSequence[currentSlideIndex];
+
+  // 渲染當前投影片
+  const renderCurrentSlide = () => {
+    if (!currentSlide) return null;
+
+    if (currentSlide.type === 'youglish') {
+      return (
+        <YouglishSlideComponent
+          slide={currentSlide}
+          onComplete={goToNextSlide}
+          autoPlay={true}
+          replayCount={youglishReplayCount}
+        />
+      );
+    } else {
+      return <ContentSlide slide={currentSlide} />;
+    }
+  };
 
   // 載入中狀態
   if (isLoading) {
@@ -355,8 +630,53 @@ export default function TeachablePage() {
     );
   }
 
+  // 計算統計
+  const contentCount = slideSequence.filter(s => s.type !== 'youglish').length;
+  const youglishCount = slideSequence.filter(s => s.type === 'youglish').length;
+
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
+      {/* Youglish 控制面板 */}
+      <div className="bg-neutral-800 border-b border-neutral-700 px-6 py-3">
+        <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            {/* 開關 */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={youglishEnabled}
+                onChange={(e) => setYouglishEnabled(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <span className="text-sm">啟用單字發音影片</span>
+            </label>
+
+            {/* 播放次數 */}
+            {youglishEnabled && (
+              <label className="flex items-center gap-2">
+                <span className="text-sm text-neutral-400">播放次數：</span>
+                <select
+                  value={youglishReplayCount}
+                  onChange={(e) => setYouglishReplayCount(Number(e.target.value))}
+                  className="bg-neutral-700 rounded px-2 py-1 text-sm"
+                >
+                  <option value={1}>1 次</option>
+                  <option value={2}>2 次</option>
+                  <option value={3}>3 次</option>
+                  <option value={5}>5 次</option>
+                </select>
+              </label>
+            )}
+          </div>
+
+          {/* 統計 */}
+          <div className="text-sm text-neutral-400 flex items-center gap-4">
+            <span>📝 內容: {contentCount}</span>
+            <span>🔊 單字: {youglishCount}</span>
+          </div>
+        </div>
+      </div>
+
       {/* 控制列 */}
       <div className="sticky top-0 z-50 bg-neutral-900 border-b border-neutral-800 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
@@ -371,14 +691,17 @@ export default function TeachablePage() {
           <div className="flex flex-col items-center gap-2 flex-1 min-w-0">
             <div className="flex items-center gap-3">
               <span className="text-neutral-400 text-sm whitespace-nowrap">
-                第 {currentSlideIndex + 1} / {slides.length} 張
+                {currentSlideIndex + 1} / {slideSequence.length}
               </span>
-              {slides.length > 10 && (
+              <span className="text-sm">
+                {slideSequence[currentSlideIndex] && getSlideTypeLabel(slideSequence[currentSlideIndex])}
+              </span>
+              {slideSequence.length > 10 && (
                 <div className="flex items-center gap-2">
                   <input
                     type="range"
                     min="0"
-                    max={slides.length - 1}
+                    max={slideSequence.length - 1}
                     value={currentSlideIndex}
                     onChange={(e) => {
                       const newIndex = parseInt(e.target.value);
@@ -394,18 +717,18 @@ export default function TeachablePage() {
               )}
             </div>
             {/* 進度條 - 適用於大量投影片 */}
-            {slides.length > 0 && (
+            {slideSequence.length > 0 && (
               <div className="w-full max-w-md bg-neutral-800 rounded-full h-1 overflow-hidden">
                 <div
                   className="bg-blue-500 h-full transition-all duration-300"
-                  style={{ width: `${((currentSlideIndex + 1) / slides.length) * 100}%` }}
+                  style={{ width: `${((currentSlideIndex + 1) / slideSequence.length) * 100}%` }}
                 />
               </div>
             )}
             {/* 導航點 - 僅在投影片少時顯示 */}
-            {slides.length <= 50 && (
+            {slideSequence.length <= 50 && (
               <div className="flex gap-1 flex-wrap justify-center max-w-md">
-                {slides.slice(Math.max(0, currentSlideIndex - 5), Math.min(slides.length, currentSlideIndex + 6)).map((_, idx) => {
+                {slideSequence.slice(Math.max(0, currentSlideIndex - 5), Math.min(slideSequence.length, currentSlideIndex + 6)).map((slide, idx) => {
                   const realIdx = Math.max(0, currentSlideIndex - 5) + idx;
                   return (
                     <div
@@ -418,7 +741,11 @@ export default function TeachablePage() {
                         }, 150);
                       }}
                       className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
-                        realIdx === currentSlideIndex ? 'bg-blue-500 w-6' : 'bg-neutral-700 hover:bg-neutral-600'
+                        realIdx === currentSlideIndex
+                          ? 'bg-yellow-500 w-6'
+                          : slide.type === 'youglish'
+                            ? 'bg-blue-500 hover:bg-blue-400'
+                            : 'bg-neutral-700 hover:bg-neutral-600'
                       }`}
                     />
                   );
@@ -429,7 +756,7 @@ export default function TeachablePage() {
 
           <button
             onClick={goToNextSlide}
-            disabled={currentSlideIndex === slides.length - 1}
+            disabled={currentSlideIndex === slideSequence.length - 1}
             className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
           >
             下一張 ▶
@@ -440,14 +767,14 @@ export default function TeachablePage() {
       {/* 投影片內容 */}
       <div className="max-w-5xl mx-auto px-6 py-12">
         <div className={`transition-opacity duration-300 ${fadeIn ? 'opacity-100' : 'opacity-0'}`}>
-          <ContentSlide slide={currentSlide} />
+          {renderCurrentSlide()}
         </div>
       </div>
 
       {/* 快捷鍵提示 */}
       <div className="fixed bottom-6 right-6 bg-neutral-900/80 backdrop-blur-sm px-4 py-2 rounded-lg text-xs text-neutral-500 space-y-1">
-        <div>鍵盤: ← 上一張 | → 下一張 | Space 下一張</div>
-        {slides.length > 10 && (
+        <div>鍵盤: ← 上一張 | → 下一張 | Space 下一張 | S 跳過 | Y 切換 Youglish</div>
+        {slideSequence.length > 10 && (
           <div className="text-neutral-600">拖曳滑桿快速跳轉</div>
         )}
       </div>
