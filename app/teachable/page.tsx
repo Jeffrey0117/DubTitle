@@ -188,13 +188,19 @@ function YouglishSlideComponent({
 
       if (!isMounted) return;
 
-      // 清空容器
+      // 確保容器元素存在
       const container = document.getElementById(containerId);
-      if (container) {
-        container.innerHTML = '';
+      if (!container) {
+        // 容器還沒渲染，等待後重試
+        setTimeout(initWidget, 100);
+        return;
       }
 
-      widget = new window.YG.Widget(containerId, {
+      // 清空容器
+      container.innerHTML = '';
+
+      try {
+        widget = new window.YG.Widget(containerId, {
         width: 640,
         components: 9, // search box & caption
         events: {
@@ -226,8 +232,19 @@ function YouglishSlideComponent({
         }
       });
 
-      widgetRef.current = widget;
-      widget.fetch(slide.word, 'english');
+        widgetRef.current = widget;
+        widget.fetch(slide.word, 'english');
+      } catch (error) {
+        console.error('[Youglish] Widget 初始化錯誤:', error);
+        setIsLoading(false);
+        setNoResults(true);
+        // 3 秒後自動跳過
+        setTimeout(() => {
+          if (isMounted) {
+            onComplete();
+          }
+        }, 3000);
+      }
     };
 
     initWidget();
