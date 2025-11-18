@@ -359,8 +359,12 @@ export default function SubtitlePage() {
       const loadedSubtitles = data.subtitles || [];
       setSubtitles(loadedSubtitles);
 
-      // 載入字幕後，從 localStorage 載入已有的詞彙快取
+      // ✅ Agent 1: 將字幕存入 localStorage 供其他頁面共用
       if (loadedSubtitles.length > 0) {
+        const subtitlesCacheKey = `dubtitle_subtitles_${id}`;
+        localStorage.setItem(subtitlesCacheKey, JSON.stringify(loadedSubtitles));
+        console.log('[字幕頁] ✅ 字幕已存入 localStorage，供 note/teachable 共用');
+
         loadVocabularyCache(id);
       }
     } catch (err: any) {
