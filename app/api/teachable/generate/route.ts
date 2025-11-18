@@ -19,6 +19,7 @@ interface TeachableSlide {
   english: string;
   chinese: string;
   vocabulary: VocabularyItem[];
+  vocabularySource?: 'cache' | 'generated';
 }
 
 interface VocabularyCache {
@@ -376,6 +377,150 @@ function mapVocabularyToSentencesNew(
   return result;
 }
 
+// 批次分析單字的設定
+const VOCAB_BATCH_SIZE = 15; // 每批最多處理 15 個句子
+
+/**
+ * 分析缺少單字的投影片，使用 AI 挑出重要單字/片語
+ */
+async function analyzeVocabularyForSlides(
+  slides: TeachableSlide[],
+  apiKey: string
+): Promise<{
+  updatedSlides: TeachableSlide[];
+  tokensUsed: { input: number; output: number };
+}> {
+  // 找出沒有 vocabulary 的投影片
+  const slidesWithoutVocab = slides.filter(s => s.vocabulary.length === 0);
+
+  if (slidesWithoutVocab.length === 0) {
+    console.log('[Teachable API] 所有投影片都有單字，無需分析');
+    return {
+      updatedSlides: slides,
+      tokensUsed: { input: 0, output: 0 }
+    };
+  }
+
+  console.log(`[Teachable API] ${slidesWithoutVocab.length} 個投影片需要分析單字`);
+
+  // 建立 slide id 到 index 的映射
+  const slideIndexMap = new Map<number, number>();
+  slides.forEach((slide, index) => {
+    slideIndexMap.set(slide.id, index);
+  });
+
+  // 分批處理
+  const batches = chunkArray(slidesWithoutVocab, VOCAB_BATCH_SIZE);
+  let totalTokens = { input: 0, output: 0 };
+
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex];
+
+    // 組合句子列表
+    const numberedSentences = batch
+      .map((slide, index) => `${index + 1}. ${slide.english}`)
+      .join('\n');
+
+    const prompt = `分析以下英文句子，挑出重要單字和片語（每句 1-3 個）。
+
+句子：
+${numberedSentences}
+
+要求：
+1. 挑出對英語學習者有幫助的單字/片語
+2. 包含翻譯（繁體中文）
+3. 只回傳 JSON：{"results": [{"id": 1, "vocabulary": [{"word": "recognize", "translation": "認出"}]}]}`;
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: '你是英語學習專家。分析句子並挑出重要單字/片語。只回傳 JSON 格式。'
+            },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+          max_tokens: 4000,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Teachable API] 單字分析批次 ${batchIndex + 1}/${batches.length} 失敗:`, errorText);
+        continue;
+      }
+
+      const data = await response.json();
+      const responseText = data.choices?.[0]?.message?.content?.trim() || '{}';
+
+      // 累計 token 使用量
+      totalTokens.input += data.usage?.prompt_tokens || 0;
+      totalTokens.output += data.usage?.completion_tokens || 0;
+
+      // 解析 JSON
+      let parsed;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch (parseError) {
+        console.warn(`[Teachable API] 單字分析批次 ${batchIndex + 1} JSON 解析失敗，嘗試修復...`);
+        const repairedText = tryRepairJSON(responseText);
+        parsed = JSON.parse(repairedText);
+      }
+
+      const results = parsed.results || [];
+
+      // 將分析結果更新到對應的投影片
+      for (const result of results) {
+        const batchSlideIndex = result.id - 1; // id 是 1-based
+        if (batchSlideIndex >= 0 && batchSlideIndex < batch.length) {
+          const slideId = batch[batchSlideIndex].id;
+          const originalIndex = slideIndexMap.get(slideId);
+
+          if (originalIndex !== undefined && result.vocabulary && Array.isArray(result.vocabulary)) {
+            // 轉換單字格式，確保符合 VocabularyItem 介面
+            const vocabulary: VocabularyItem[] = result.vocabulary.map((v: any) => ({
+              word: v.word || '',
+              translation: v.translation || '',
+              pronunciation: v.pronunciation,
+              partOfSpeech: v.partOfSpeech,
+              note: v.note,
+            })).filter((v: VocabularyItem) => v.word && v.translation);
+
+            slides[originalIndex].vocabulary = vocabulary;
+            slides[originalIndex].vocabularySource = 'generated';
+          }
+        }
+      }
+
+      console.log(`[Teachable API] 單字分析批次 ${batchIndex + 1}/${batches.length} 完成`);
+
+      // 批次之間稍作延遲
+      if (batchIndex < batches.length - 1) {
+        await sleep(200);
+      }
+
+    } catch (error: any) {
+      console.error(`[Teachable API] 單字分析批次 ${batchIndex + 1} 錯誤:`, error.message);
+    }
+  }
+
+  console.log(`[Teachable API] 單字分析完成，tokens 使用:`, totalTokens);
+
+  return {
+    updatedSlides: slides,
+    tokensUsed: totalTokens
+  };
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
@@ -403,9 +548,20 @@ export async function POST(request: NextRequest) {
       const cached = getCachedSlides(videoId);
       if (cached) {
         console.log('[Teachable API] Cache hit - 返回快取的投影片');
+
+        // 收集所有單字供 Youglish API 使用
+        const allVocabulary = cached.flatMap(slide =>
+          slide.vocabulary.map(v => ({
+            word: v.word,
+            translation: v.translation,
+            slideId: slide.id
+          }))
+        );
+
         return NextResponse.json({
           success: true,
           slides: cached,
+          allVocabulary,
           stats: {
             totalSlides: cached.length,
             totalVocabulary: cached.reduce((sum, s) => sum + (s.vocabulary?.length || 0), 0),
@@ -515,18 +671,38 @@ export async function POST(request: NextRequest) {
     console.log('[Teachable API] Vocabulary 映射統計:', vocabMappingStats);
 
     // 步驟 5: 組裝投影片（每個完整句子生成一張投影片）
-    const slides: TeachableSlide[] = sentences.map((sentence, index) => {
+    let slides: TeachableSlide[] = sentences.map((sentence, index) => {
+      const hasVocab = vocabularyBySentence[index] && vocabularyBySentence[index].length > 0;
       return {
         id: index + 1,
         type: 'content' as const,
         english: sentence,
         chinese: translations[index] || sentence, // 如果翻譯失敗則使用原文
         vocabulary: vocabularyBySentence[index] || [],
+        vocabularySource: hasVocab ? 'cache' as const : undefined,
       };
     });
 
     console.log('[Teachable API] 成功生成', slides.length, '張投影片（每張1個完整句子）');
     console.log('[Teachable API] Token 使用統計:', tokensUsed, '(分句:', splitTokensUsed, '+ 翻譯:', translateTokensUsed, ')');
+
+    // 步驟 6: 分析缺少單字的投影片
+    const slidesWithoutVocab = slides.filter(s => s.vocabulary.length === 0);
+    let vocabAnalysisTokens = { input: 0, output: 0 };
+
+    if (slidesWithoutVocab.length > 0) {
+      console.log(`[Teachable API] ${slidesWithoutVocab.length} 個投影片需要分析單字`);
+      const { updatedSlides, tokensUsed: vocabTokens } = await analyzeVocabularyForSlides(
+        slides,
+        apiKey
+      );
+      slides = updatedSlides;
+      vocabAnalysisTokens = vocabTokens;
+
+      // 累加 token
+      tokensUsed.input += vocabTokens.input;
+      tokensUsed.output += vocabTokens.output;
+    }
 
     // 儲存到伺服器快取
     setCachedSlides(videoId, slides);
@@ -534,12 +710,34 @@ export async function POST(request: NextRequest) {
     // 統計 vocabulary 總數
     const totalVocabulary = slides.reduce((sum, s) => sum + (s.vocabulary?.length || 0), 0);
 
+    // 收集所有單字供 Youglish API 使用
+    const allVocabulary = slides.flatMap(slide =>
+      slide.vocabulary.map(v => ({
+        word: v.word,
+        translation: v.translation,
+        slideId: slide.id
+      }))
+    );
+
+    // 統計各來源的單字數量
+    const vocabFromCache = slides.filter(s => s.vocabularySource === 'cache').reduce((sum, s) => sum + s.vocabulary.length, 0);
+    const vocabGenerated = slides.filter(s => s.vocabularySource === 'generated').reduce((sum, s) => sum + s.vocabulary.length, 0);
+
+    console.log('[Teachable API] 單字來源統計:', {
+      fromCache: vocabFromCache,
+      generated: vocabGenerated,
+      total: totalVocabulary
+    });
+
     return NextResponse.json({
       success: true,
       slides,
+      allVocabulary, // 所有單字的 JSON，供 Youglish API 使用
       stats: {
         totalSlides: slides.length,
         totalVocabulary,
+        vocabFromCache,
+        vocabGenerated,
         tokensUsed: {
           ...tokensUsed,
           total: tokensUsed.input + tokensUsed.output
