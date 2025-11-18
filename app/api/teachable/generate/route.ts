@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { reconstructSentences, ReconstructedSentence } from '@/lib/transcriptProcessor';
+
+interface TokenUsage {
+  input: number;
+  output: number;
+}
 
 interface VocabularyItem {
   word: string;
@@ -28,6 +32,70 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000;
 const BATCH_SIZE = 40; // 每批最大句數
 const MAX_RETRIES = 2; // 最大重試次數
 const RETRY_DELAY = 1000; // 重試間隔（毫秒）
+
+/**
+ * AI 智能分句：將無標點的字幕文字分割成完整句子
+ */
+async function intelligentSentenceSplit(
+  rawText: string,
+  apiKey: string
+): Promise<{ sentences: string[]; tokensUsed: TokenUsage }> {
+  const prompt = `將以下英文文字分割成獨立的完整句子。每句應該是一個完整的語意單位。
+
+文字：
+${rawText}
+
+要求：
+1. 根據語意自然斷句，找出句子的開始和結束
+2. 每句保持完整性和連貫性
+3. 不要改變原文內容，只做分割
+4. 只回傳 JSON：{"sentences": ["句子1", "句子2", ...]}`;
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: '你是文本處理專家。將英文文字分割成獨立的完整句子。只回傳 JSON 格式。'
+          },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.1, // 低溫度確保穩定分句
+        max_tokens: 8000,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.choices?.[0]?.message?.content?.trim() || '{}';
+
+    const parsed = JSON.parse(responseText);
+
+    const sentences = parsed.sentences || [];
+    const tokensUsed: TokenUsage = {
+      input: data.usage?.prompt_tokens || 0,
+      output: data.usage?.completion_tokens || 0,
+    };
+
+    console.log('[Teachable API] AI 分句完成：', sentences.length, '個句子，tokens:', tokensUsed);
+    return { sentences, tokensUsed };
+
+  } catch (error: any) {
+    console.error('[Teachable API] AI 分句失敗：', error);
+    throw new Error(`AI sentence split failed: ${error.message}`);
+  }
+}
 
 /**
  * 將陣列分割成指定大小的批次
@@ -249,14 +317,16 @@ async function batchTranslateToTraditionalChinese(
 }
 
 /**
- * 將 vocabulary cache 從原始字幕索引映射到重組後的句子
+ * 將 vocabulary cache 從原始字幕映射到 AI 分句後的句子（使用文字比對）
  *
- * @param sentences - 重組後的句子陣列
+ * @param sentences - AI 分句後的句子陣列
+ * @param originalSubtitles - 原始字幕文字陣列
  * @param vocabCache - 原始的 vocabulary cache（以字幕索引為 key）
  * @returns 每個句子對應的 vocabulary 陣列
  */
-function mapVocabularyToSentences(
-  sentences: ReconstructedSentence[],
+function mapVocabularyToSentencesNew(
+  sentences: string[],
+  originalSubtitles: string[],
   vocabCache: VocabularyCache
 ): VocabularyItem[][] {
   const result: VocabularyItem[][] = [];
@@ -264,16 +334,37 @@ function mapVocabularyToSentences(
   for (const sentence of sentences) {
     const vocabularyForSentence: VocabularyItem[] = [];
     const seenWords = new Set<string>(); // 避免重複單字
+    const sentenceLower = sentence.toLowerCase();
 
-    // 收集該句子包含的所有原始字幕索引的 vocabulary
-    for (const subtitleIndex of sentence.subtitleIndices) {
-      const vocab = vocabCache[subtitleIndex];
-      if (vocab && Array.isArray(vocab)) {
-        for (const item of vocab) {
-          // 避免重複加入相同單字
-          if (!seenWords.has(item.word)) {
-            vocabularyForSentence.push(item);
-            seenWords.add(item.word);
+    // 對每個原始字幕，檢查它的文字是否出現在這個句子中
+    for (let i = 0; i < originalSubtitles.length; i++) {
+      const subtitleText = originalSubtitles[i].trim().toLowerCase();
+
+      // 如果字幕文字出現在句子中，收集該字幕的 vocabulary
+      if (subtitleText && sentenceLower.includes(subtitleText)) {
+        const vocab = vocabCache[i];
+        if (vocab && Array.isArray(vocab)) {
+          for (const item of vocab) {
+            // 額外檢查：單字本身也要出現在句子中
+            if (!seenWords.has(item.word) && sentenceLower.includes(item.word.toLowerCase())) {
+              vocabularyForSentence.push(item);
+              seenWords.add(item.word);
+            }
+          }
+        }
+      }
+    }
+
+    // 備選方案：如果上面沒找到任何 vocabulary，直接檢查每個單字是否在句子中
+    if (vocabularyForSentence.length === 0) {
+      for (let i = 0; i < originalSubtitles.length; i++) {
+        const vocab = vocabCache[i];
+        if (vocab && Array.isArray(vocab)) {
+          for (const item of vocab) {
+            if (!seenWords.has(item.word) && sentenceLower.includes(item.word.toLowerCase())) {
+              vocabularyForSentence.push(item);
+              seenWords.add(item.word);
+            }
           }
         }
       }
@@ -335,28 +426,85 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 步驟 1: 重組字幕為完整句子
-    console.log('[Teachable API] 開始重組字幕片段為完整句子...');
-    console.log('[Teachable API] 原始字幕片段數:', transcript.length);
-    const sentences = reconstructSentences(transcript);
-    console.log('[Teachable API] 重組後句子數:', sentences.length);
-    console.log('[Teachable API] 句子範例:', sentences.slice(0, 3).map(s => ({
-      id: s.id,
-      text: s.text.substring(0, 60) + '...',
-      subtitleIndices: s.subtitleIndices
-    })));
+    // 步驟 1: 合併字幕片段為一段文字，然後用 AI 智能分句
+    console.log('[Teachable API] 開始處理，原始字幕片段數:', transcript.length);
 
-    // 步驟 2: 批次翻譯所有完整句子（只調用一次 Groq API）
-    const sentenceTexts = sentences.map(s => s.text);
-    console.log('[Teachable API] 開始批次翻譯', sentenceTexts.length, '個完整句子...');
-    const { translations, tokensUsed } = await batchTranslateToTraditionalChinese(
-      sentenceTexts,
+    const rawText = transcript
+      .map((t: string) => t.trim())
+      .filter((t: string) => t.length > 0)
+      .join(' ');
+
+    if (!rawText) {
+      console.warn('[Teachable API] 沒有可用的文字');
+      return NextResponse.json({
+        success: true,
+        slides: [],
+        stats: {
+          totalSlides: 0,
+          totalVocabulary: 0,
+          tokensUsed: { input: 0, output: 0, total: 0 },
+          fromCache: false,
+          processingTime: Date.now() - startTime,
+        },
+      });
+    }
+
+    console.log('[Teachable API] 合併後文字長度：', rawText.length, '字元');
+
+    // 步驟 2: AI 智能分句
+    let sentences: string[] = [];
+    let splitTokensUsed: TokenUsage = { input: 0, output: 0 };
+
+    try {
+      const splitResult = await intelligentSentenceSplit(rawText, apiKey);
+      sentences = splitResult.sentences;
+      splitTokensUsed = splitResult.tokensUsed;
+      console.log('[Teachable API] AI 分句成功，完整句子數：', sentences.length);
+    } catch (error) {
+      console.warn('[Teachable API] AI 分句失敗，降級使用簡單分句：', error);
+      // 降級處理：簡單用標點分句
+      sentences = rawText.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+      if (sentences.length === 0) {
+        sentences = [rawText]; // 最後降級：整段當一句
+      }
+    }
+
+    // 如果分句後沒有句子，返回空結果
+    if (sentences.length === 0) {
+      console.warn('[Teachable API] 沒有可用的句子');
+      return NextResponse.json({
+        success: true,
+        slides: [],
+        stats: {
+          totalSlides: 0,
+          totalVocabulary: 0,
+          tokensUsed: splitTokensUsed,
+          fromCache: false,
+          processingTime: Date.now() - startTime,
+        },
+      });
+    }
+
+    console.log('[Teachable API] 句子範例:', sentences.slice(0, 3).map(s =>
+      s.substring(0, 60) + (s.length > 60 ? '...' : '')
+    ));
+
+    // 步驟 3: 批次翻譯所有完整句子
+    console.log('[Teachable API] 開始批次翻譯', sentences.length, '個完整句子...');
+    const { translations, tokensUsed: translateTokensUsed } = await batchTranslateToTraditionalChinese(
+      sentences,
       apiKey
     );
 
-    // 步驟 3: 映射 vocabulary cache 到重組後的句子
+    // 合併分句和翻譯的 token 使用量
+    const tokensUsed = {
+      input: splitTokensUsed.input + translateTokensUsed.input,
+      output: splitTokensUsed.output + translateTokensUsed.output,
+    };
+
+    // 步驟 4: 映射 vocabulary cache 到 AI 分句後的句子（使用文字比對）
     const vocabCache: VocabularyCache = vocabularyCache || {};
-    const vocabularyBySentence = mapVocabularyToSentences(sentences, vocabCache);
+    const vocabularyBySentence = mapVocabularyToSentencesNew(sentences, transcript, vocabCache);
 
     // 統計 vocabulary 映射情況
     const vocabMappingStats = {
@@ -366,19 +514,19 @@ export async function POST(request: NextRequest) {
     };
     console.log('[Teachable API] Vocabulary 映射統計:', vocabMappingStats);
 
-    // 步驟 4: 組裝投影片（每個完整句子生成一張投影片）
+    // 步驟 5: 組裝投影片（每個完整句子生成一張投影片）
     const slides: TeachableSlide[] = sentences.map((sentence, index) => {
       return {
         id: index + 1,
         type: 'content' as const,
-        english: sentence.text,
-        chinese: translations[index] || sentence.text, // 如果翻譯失敗則使用原文
+        english: sentence,
+        chinese: translations[index] || sentence, // 如果翻譯失敗則使用原文
         vocabulary: vocabularyBySentence[index] || [],
       };
     });
 
     console.log('[Teachable API] 成功生成', slides.length, '張投影片（每張1個完整句子）');
-    console.log('[Teachable API] Token 使用統計:', tokensUsed);
+    console.log('[Teachable API] Token 使用統計:', tokensUsed, '(分句:', splitTokensUsed, '+ 翻譯:', translateTokensUsed, ')');
 
     // 儲存到伺服器快取
     setCachedSlides(videoId, slides);
