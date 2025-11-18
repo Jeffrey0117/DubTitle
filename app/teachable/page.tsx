@@ -179,10 +179,24 @@ function YouglishSlideComponent({
     let widget: any = null;
     let isMounted = true;
 
+    let retryCount = 0;
+    const maxRetries = 50; // 5 秒超時
+
     const initWidget = () => {
+      retryCount++;
+
       if (!window.YG) {
         // 等待 API 載入
-        setTimeout(initWidget, 100);
+        if (retryCount <= maxRetries) {
+          setTimeout(initWidget, 100);
+        } else {
+          console.error('[Youglish] API 載入超時');
+          setIsLoading(false);
+          setNoResults(true);
+          setTimeout(() => {
+            if (isMounted) onComplete();
+          }, 2000);
+        }
         return;
       }
 
@@ -192,9 +206,13 @@ function YouglishSlideComponent({
       const container = document.getElementById(containerId);
       if (!container) {
         // 容器還沒渲染，等待後重試
-        setTimeout(initWidget, 100);
+        if (retryCount <= maxRetries) {
+          setTimeout(initWidget, 100);
+        }
         return;
       }
+
+      console.log(`[Youglish] 初始化 Widget for "${slide.word}"`)
 
       // 清空容器
       container.innerHTML = '';
@@ -364,18 +382,36 @@ export default function TeachablePage() {
   const [fadeIn, setFadeIn] = useState(true);
 
   // Youglish 控制狀態
-  const [youglishEnabled, setYouglishEnabled] = useState(true);
+  const [youglishEnabled, setYouglishEnabled] = useState(false); // 預設停用，因為可能載入失敗
+  const [youglishScriptLoaded, setYouglishScriptLoaded] = useState(false);
+  const [youglishScriptError, setYouglishScriptError] = useState(false);
   const [youglishReplayCount, setYouglishReplayCount] = useState(3);
 
   // 載入 Youglish Script
   useEffect(() => {
     // 檢查是否已載入
-    if (document.getElementById('youglish-script')) return;
+    if (document.getElementById('youglish-script')) {
+      console.log('[Youglish] Script 已存在');
+      return;
+    }
 
+    console.log('[Youglish] 載入 Widget script...');
     const script = document.createElement('script');
     script.id = 'youglish-script';
     script.src = 'https://youglish.com/public/emb/widget.js';
     script.async = true;
+
+    script.onload = () => {
+      console.log('[Youglish] Script 載入完成, window.YG =', !!(window as any).YG);
+      setYouglishScriptLoaded(true);
+    };
+
+    script.onerror = () => {
+      console.error('[Youglish] Script 載入失敗 - 可能需要 API 設定或網路問題');
+      setYouglishScriptError(true);
+      setYouglishEnabled(false); // 自動停用
+    };
+
     document.body.appendChild(script);
 
     return () => {
@@ -658,18 +694,26 @@ export default function TeachablePage() {
         <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
             {/* 開關 */}
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className={`flex items-center gap-2 ${youglishScriptError ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
               <input
                 type="checkbox"
                 checked={youglishEnabled}
                 onChange={(e) => setYouglishEnabled(e.target.checked)}
+                disabled={youglishScriptError}
                 className="w-4 h-4 rounded"
               />
               <span className="text-sm">啟用單字發音影片</span>
             </label>
 
+            {/* Script 載入錯誤提示 */}
+            {youglishScriptError && (
+              <span className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded">
+                ⚠️ Youglish 暫時無法使用（腳本載入失敗）
+              </span>
+            )}
+
             {/* 播放次數 */}
-            {youglishEnabled && (
+            {youglishEnabled && !youglishScriptError && (
               <label className="flex items-center gap-2">
                 <span className="text-sm text-neutral-400">播放次數：</span>
                 <select
@@ -689,7 +733,7 @@ export default function TeachablePage() {
           {/* 統計 */}
           <div className="text-sm text-neutral-400 flex items-center gap-4">
             <span>📝 內容: {contentCount}</span>
-            <span>🔊 單字: {youglishCount}</span>
+            {!youglishScriptError && <span>🔊 單字: {youglishCount}</span>}
           </div>
         </div>
       </div>
@@ -790,7 +834,10 @@ export default function TeachablePage() {
 
       {/* 快捷鍵提示 */}
       <div className="fixed bottom-6 right-6 bg-neutral-900/80 backdrop-blur-sm px-4 py-2 rounded-lg text-xs text-neutral-500 space-y-1">
-        <div>鍵盤: ← 上一張 | → 下一張 | Space 下一張 | S 跳過 | Y 切換 Youglish</div>
+        <div>
+          鍵盤: ← 上一張 | → 下一張 | Space 下一張
+          {!youglishScriptError && ' | S 跳過 | Y 切換 Youglish'}
+        </div>
         {slideSequence.length > 10 && (
           <div className="text-neutral-600">拖曳滑桿快速跳轉</div>
         )}
