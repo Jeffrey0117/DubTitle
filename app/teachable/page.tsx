@@ -387,35 +387,59 @@ export default function TeachablePage() {
   const [youglishScriptError, setYouglishScriptError] = useState(false);
   const [youglishReplayCount, setYouglishReplayCount] = useState(3);
 
-  // 載入 Youglish Script
+  // 載入 Youglish Script - 使用官方 onYouglishAPIReady 回調
   useEffect(() => {
     // 檢查是否已載入
     if (document.getElementById('youglish-script')) {
       console.log('[Youglish] Script 已存在');
+      // 如果已經有 YG 物件，表示 API 已就緒
+      if ((window as any).YG) {
+        setYouglishScriptLoaded(true);
+      }
       return;
     }
 
     console.log('[Youglish] 載入 Widget script...');
-    const script = document.createElement('script');
-    script.id = 'youglish-script';
-    script.src = 'https://youglish.com/public/emb/widget.js';
-    script.async = true;
 
-    script.onload = () => {
-      console.log('[Youglish] Script 載入完成, window.YG =', !!(window as any).YG);
+    // 定義 API 就緒回調（必須在載入 script 之前）
+    (window as any).onYouglishAPIReady = () => {
+      console.log('[Youglish] API 就緒！window.YG =', !!(window as any).YG);
       setYouglishScriptLoaded(true);
     };
 
-    script.onerror = () => {
+    // 建立並插入 script 標籤（按照官方文件方式）
+    const tag = document.createElement('script');
+    tag.id = 'youglish-script';
+    tag.src = 'https://youglish.com/public/emb/widget.js';
+
+    // 超時處理
+    const timeout = setTimeout(() => {
+      if (!((window as any).YG)) {
+        console.error('[Youglish] Script 載入超時（10秒）');
+        setYouglishScriptError(true);
+        setYouglishEnabled(false);
+      }
+    }, 10000);
+
+    tag.onerror = () => {
+      clearTimeout(timeout);
       console.error('[Youglish] Script 載入失敗 - 可能需要 API 設定或網路問題');
       setYouglishScriptError(true);
-      setYouglishEnabled(false); // 自動停用
+      setYouglishEnabled(false);
     };
 
-    document.body.appendChild(script);
+    // 按照官方文件插入方式
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    if (firstScriptTag && firstScriptTag.parentNode) {
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    } else {
+      document.head.appendChild(tag);
+    }
 
     return () => {
-      // 清理時不移除 script，因為可能其他組件還在使用
+      clearTimeout(timeout);
+      // 清理回調
+      delete (window as any).onYouglishAPIReady;
     };
   }, []);
 
