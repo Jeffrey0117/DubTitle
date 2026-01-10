@@ -41,3 +41,14 @@ nul
 
 # dev logs
 dev.log
+
+# Claude settings
+.claude/
+
+# Development notes and plans
+*.md
+!README.md
+
+# Test scripts
+test-*.js
+demo-*.js
