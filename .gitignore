@@ -48,6 +48,7 @@ dev.log
 # Development notes and plans
 *.md
 !README.md
+!README.zh-TW.md
 
 # Test scripts
 test-*.js

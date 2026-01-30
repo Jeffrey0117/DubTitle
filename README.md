@@ -1,95 +1,92 @@
-# DubTitle - YouTube双字幕系统
+<div align="center">
 
-极简的YouTube双字幕显示系统，灵感来自Anthony Fu的极简设计风格。
+# DubTitle
 
-## 功能特性
+**YouTube Dual Subtitle System**
 
-- 🎥 **YouTube播放器**: 简单输入YouTube链接即可播放
-- 📝 **双字幕显示**: 独立的字幕面板，支持自定义样式
-- 🎨 **样式自定义**:
-  - 可调整背景颜色
-  - 可调整字幕颜色
-  - 可调整字体大小 (16-64px)
-- 🖥️ **双视窗布局**: 类似简报的分屏设计
-- ✨ **极简UI**: 深色主题，去除一切不必要的元素
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
-## 技术栈
+A minimalist YouTube dual subtitle display system, inspired by Anthony Fu's design philosophy.
 
-- **框架**: Next.js 15 (App Router)
-- **语言**: TypeScript
-- **样式**: Tailwind CSS
-- **架构**: 纯前端，无后端
+[Getting Started](#getting-started) · [Features](#features) · [Tech Stack](#tech-stack) · [繁體中文](README.zh-TW.md)
 
-## 快速开始
+</div>
 
-### 安装依赖
-\`\`\`bash
+---
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| 🎥 YouTube Player | Paste a link and start watching |
+| 📝 Dual Subtitles | Side-by-side subtitle panel with custom styling |
+| 🎨 Style Customization | Background color / subtitle color / font size (16–64px) |
+| 🖥️ Split View | Presentation-style dual-pane layout |
+| 🤖 AI Word Analysis | AI-powered analysis of difficult vocabulary in subtitles |
+| ✨ Minimal UI | Dark theme, zero clutter |
+
+## Getting Started
+
+```bash
+# Install dependencies
 npm install
-\`\`\`
 
-### 启动开发服务器
-\`\`\`bash
+# Start dev server
 npm run dev
-\`\`\`
+```
 
-### 访问应用
-打开浏览器访问 [http://localhost:3000](http://localhost:3000)
+Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
-## 使用方法
+## Usage
 
-1. 在左侧输入框中粘贴YouTube视频链接
-2. 点击"加载视频"按钮
-3. 视频将在左侧播放，字幕在右侧显示
-4. 使用底部控制面板自定义字幕样式
+1. Paste a YouTube video URL in the input field
+2. Click **Load Video**
+3. Video plays on the left, subtitles appear on the right
+4. Customize subtitle styles using the control panel
 
-## 项目结构
+## Tech Stack
 
-\`\`\`
+| Category | Technology |
+|----------|------------|
+| Framework | Next.js 15 (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS |
+| AI | Anthropic SDK / Groq SDK |
+| Subtitles | youtube-caption-extractor |
+
+## Project Structure
+
+```
 dubtitle/
 ├── app/
-│   ├── layout.tsx          # 根布局
-│   ├── page.tsx            # 主页（双视窗布局）
-│   └── globals.css         # 全局样式
+│   ├── layout.tsx            # Root layout
+│   ├── page.tsx              # Home (split view)
+│   └── globals.css           # Global styles
 ├── components/
-│   ├── YouTubePlayer.tsx   # YouTube播放器组件
-│   ├── SubtitlePanel.tsx   # 字幕面板组件
-│   └── StyleControl.tsx    # 样式控制组件
-└── plan-1.md               # 开发计划文档
-\`\`\`
+│   ├── YouTubePlayer.tsx     # YouTube player component
+│   ├── SubtitlePanel.tsx     # Subtitle panel component
+│   └── StyleControl.tsx      # Style control component
+└── scripts/
+    └── clean-restart.js      # Clean / restart utility
+```
 
-## 功能特性详解
+## Roadmap
 
-### Phase 1: 基础MVP ✅
-- 双视窗布局系统
-- YouTube视频播放
-- 自定义字幕样式
+- [x] **Phase 1** — MVP: split view layout, YouTube playback, subtitle styling
+- [x] **Phase 2** — Real subtitle integration: multi-language, VTT parsing, time-synced display
+- [x] **Phase 3** — AI vocabulary analysis: auto-detect difficult words in subtitles
+- [ ] Multi-language subtitle switching
+- [ ] Subtitle download
+- [ ] Responsive design improvements
+- [ ] Subtitle caching
 
-### Phase 2: 真实字幕集成 ✅
-- **yt-dlp集成**: 使用yt-dlp提取YouTube官方字幕
-- **多语言支持**: 支持中文（简体/繁体）和英文字幕
-- **自动提取**: 输入视频链接自动加载字幕
-- **VTT解析**: 完整的WebVTT格式解析
-- **智能同步**: 基于时间戳的字幕同步
-- **错误处理**: 友好的加载状态和错误提示
+## Design Philosophy
 
-### 技术栈详情
-- **前端**: Next.js 15 (App Router) + TypeScript + Tailwind CSS
-- **字幕提取**: yt-dlp (v2025.11.12)
-- **运行环境**: Python 3.14 + Node.js
-
-### 未来优化方向
-- 支持多语言字幕切换
-- 添加字幕下载功能
-- 响应式设计优化
-- 字幕缓存机制
-
-## 设计理念
-
-遵循"不过度开发"原则：
-- 纯前端实现，无需后端
-- 极简UI，专注核心功能
-- 简洁代码，易于维护
+> "Don't over-engineer." — Pure frontend, minimal UI, focused on core functionality.
 
 ## License
 
-MIT
+[MIT](LICENSE)
